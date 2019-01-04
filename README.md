@@ -7,6 +7,7 @@ Libraries used:
 ```
 fbchat
 gnupg
+tkinter
 ```
 
 Setup
