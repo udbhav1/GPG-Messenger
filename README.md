@@ -1,17 +1,14 @@
 # GPG-Messenger
-GPG-based messenger client that implements PGP encryption while using Facebook Messenger as a backend
+GnuPG (GPG) based messenger client that implements the openPGP encryption standard while using Facebook Messenger or an equivalent as a backend. Very similar to [Pidgin](https://pidgin.im/) or [Adium](https://adium.im/).
 
-**Python 3.7**
+Implemented using [**Python 3.7**](https://www.python.org/).
 
 Libraries used:
-```
-fbchat
-gnupg
-tkinter
-```
+- [fbchat](https://fbchat.readthedocs.io/en/master/)
+- [python-gnupg](https://pythonhosted.org/python-gnupg/)
+- tkinter
 
-Setup
----------------------
+## Setup
 
 1. Set ***"gpgpath"*** in config.json to the path of your **.gnupg**
 2. Create and gpg-encrypt a text file that contains your facebook password with:

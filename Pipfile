@@ -6,8 +6,8 @@ verify_ssl = true
 [dev-packages]
 
 [packages]
-gnupg = "*"
 fbchat = "*"
+python-gnupg = "*"
 
 [requires]
 python_version = "3.7"

@@ -1,2 +1,4 @@
 .DS_store
 config.json
+cookie.gpg
+stdout.log

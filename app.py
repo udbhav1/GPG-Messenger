@@ -6,18 +6,21 @@ from fbchat import Client
 from fbchat.models import *
 import messenger
 
+#By Udbhav Muthakana, Stephen Huan
+#GUI messenging app
+
 client = messenger.client
 recipient = None
 recipientid = None
 recipientkeyid = None
 header = "-----BEGIN PGP MESSAGE-----"
 
-# show alert box
 def error(title, text):
+    """ Shows alert box. """
     messagebox.showerror(title, text)
 
-# change who to chat with and check for public key
 def updateRecipient(event=None):
+    """ Changes who to chat with and checks for a public key """
     global recipient
     global recipientid
     global recipientkeyid
@@ -32,13 +35,13 @@ def updateRecipient(event=None):
         return
     recipient = entry
     # update status bar
-    status = "Currently chatting with: " + recipient
+    status_bar['text'] = "Chatting with: " + recipient
     recipientid = users[0].uid
     # try to find their public key
     for key in messenger.gpg.list_keys():
         for uid in key["uids"]:
-             if recipient in uid:
-                  recipientkeyid= key["keyid"]
+            if recipient.lower() in uid.lower():
+                recipientkeyid = key["keyid"]
     # warn user if key not found
     if recipientkeyid == None:
         error("Warning", "Recipient public key not found \n\nMessages will not be encrypted")
@@ -46,9 +49,11 @@ def updateRecipient(event=None):
     msg_list.delete(0, tkinter.END)
     updateLast(50)
 
-# get a bit of history instead of just an empty box
-# takes in how many messages to update
 def updateLast(n):
+    """
+    Gets a bit of history instead of just an empty box.
+    n [int]: takes in how many messages to update
+    """
     try:
         prev = client.fetchThreadMessages(thread_id=recipientid, limit=n)[::-1]
     except FBchatException:
@@ -68,8 +73,8 @@ def updateLast(n):
             msg_list.insert(tkinter.END, "")
             msg_list.yview(tkinter.END)
 
-# attempts to encrypt and send the message in the entry_field text box
 def send(event=None):
+    """ Attempts to encrypt and send the message in the entry_field text box """
     tosend = entry_field.get("1.0", tkinter.END)
     if tosend == "#QUIT":
         master.quit()
@@ -77,7 +82,9 @@ def send(event=None):
 
     # encrypt so that both the recipient and you can decrypt, but only encrypt if you have their public key
     if recipientkeyid != None:
-        encrypted = str(messenger.gpg.encrypt(tosend, recipientkeyid, messenger.keyid))
+        print(recipientkeyid, messenger.keyid)
+        encrypted = str(messenger.gpg.encrypt(tosend, [recipientkeyid, messenger.keyid]))
+        print(encrypted)
     else:
         encrypted = tosend
     client.send(Message(text=encrypted), thread_id=recipientid, thread_type=ThreadType.USER)
@@ -87,8 +94,8 @@ def send(event=None):
     msg_list.yview(tkinter.END)
     return 'break'
 
-# threaded function to continuously receive mesages, but only if a recipient is set
 def receive():
+    """ Threaded function to continuously receive mesages, but only if a recipient is set. """
     if recipientid != None:
         last = client.fetchThreadMessages(thread_id=recipientid, limit=1)[0]
         lastTime = last.timestamp
@@ -113,8 +120,7 @@ master = tkinter.Tk()
 master.title("GPG Messenger Client")
 
 # shows who you're currently chatting with
-status = tkinter.StringVar()
-status_bar = tkinter.Label(master, text="Chatting with: " + str(status))
+status_bar = tkinter.Label(master, text="Chatting with: No one :(")
 status_bar.pack()
 
 # frame for message box and scrollbar
@@ -126,7 +132,6 @@ scrollbar = tkinter.Scrollbar(messages_frame)  # To navigate through past messag
 msg_list = tkinter.Listbox(messages_frame, height=30, width=100, yscrollcommand=scrollbar.set)
 scrollbar.pack(side=tkinter.RIGHT, fill=tkinter.Y)
 msg_list.pack(side=tkinter.LEFT, fill=tkinter.BOTH, expand=True)
-
 
 # messages entered here
 entry_field = tkinter.Text(master, wrap=tkinter.WORD, width=50, height=2, borderwidth=2, relief=tkinter.RIDGE)
