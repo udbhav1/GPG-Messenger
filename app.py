@@ -26,7 +26,7 @@ def update_messages(text):
     # scroll to bottom
     msg_list.yview(END)
 
-def updateRecipient(event=None):
+def update_recipient(event=None):
     """ Changes who to chat with and checks for a public key. """
     global recipient
     global recipientid
@@ -59,9 +59,9 @@ def updateRecipient(event=None):
             error("Warning", "Recipient public key not found \n\nMessages will not be encrypted")
         # clear listbox before updating
         msg_list.delete(0, END)
-        updateLast()
+        update_last()
 
-def updateLast(n=HISTORY):
+def update_last(n=HISTORY):
     """
     Gets a bit of history instead of just an empty box.
     n [int]: takes in how many messages to update
@@ -78,7 +78,6 @@ def send(event=None):
     entry_field.delete("1.0", END)
 
     client.send_message(tosend, recipientid, recipientkeyid)
-    return 'break'
 
 def receive():
     """ Threaded function to continuously receive messages. """
@@ -88,18 +87,18 @@ def receive():
             parse_fb_message(client.message)
             client.recieved = False
 
-def listboxUpdateRecipient(event=None):
+def listbox_update_recipient(event=None):
     """ Triggered when an item is selected in the listbox of recipients """
     if len(recipients_list.curselection()) != 0:
         if recipients_list.get(recipients_list.curselection()[0]) != recipient:
-            # roundabout way to use updateRecipient() rather than making a new func
+            # roundabout way to use update_recipient() rather than making a new func
             recipient_field.delete("1.0", END)
             recipient_field.insert(END, recipients_list.get(recipients_list.curselection()[0]))
-            updateRecipient()
+            update_recipient()
             recipient_field.delete("1.0", END)
             recipient_field.insert("1.0", defaultRecipientText)
 
-def updateDefaultText(field, text, event):
+def update_default_text(field, text, event):
     """ Manages the default text a box. """
     current = field.get("1.0", END)
     if current == text + "\n":
@@ -107,12 +106,12 @@ def updateDefaultText(field, text, event):
     elif current == "\n":
         field.insert("1.0", text)
 
-def createField(f, text, tkparam, gridparam):
+def create_field(f, text, tkparam, gridparam):
     field = tkinter.Text(master, **tkparam, borderwidth=2, relief=tkinter.RIDGE)
     field.insert(END, text)
     field.grid(**gridparam)
     field.bind("<Return>", f)
-    f = lambda event=None: updateDefaultText(field, text, event)
+    f = lambda event=None: update_default_text(field, text, event)
     field.bind("<FocusIn>", f)
     field.bind("<FocusOut>", f)
     return field
@@ -127,7 +126,7 @@ status_bar.grid(row=0,column=2)
 recipients_list = tkinter.Listbox(master, height=30, width=30)
 recipients_list.grid(row=1,column=0)
 recipients_list.bind('<FocusOut>', lambda e: recipients_list.selection_clear(0, END))
-recipients_list.bind('<<ListboxSelect>>', listboxUpdateRecipient)
+recipients_list.bind('<<ListboxSelect>>', listbox_update_recipient)
 
 msg_frame = tkinter.Frame(master)
 msg_frame.grid(row=1,column=1, columnspan=4)
@@ -137,11 +136,10 @@ msg_list = tkinter.Listbox(msg_frame, height=30, width=100, yscrollcommand=scrol
 scrollbar.pack(side=tkinter.RIGHT, fill=tkinter.Y)
 msg_list.pack(side=tkinter.LEFT, fill=tkinter.BOTH, expand=True)
 
-entry_field = createField(send, "Type a message", {"wrap": tkinter.WORD, "height": 2, "width": 128}, {"row":2, "column":1, "columnspan": 4})
-recipient_field = createField(updateRecipient, "Update Recipient", {"height": 1, "width": 25}, {"row":2, "column":0})
+entry_field = create_field(send, "Type a message", {"wrap": tkinter.WORD, "height": 2, "width": 128}, {"row":2, "column":1, "columnspan": 4})
+recipient_field = create_field(update_recipient, "Update Recipient", {"height": 1, "width": 25}, {"row":2, "column":0})
 
 messenger.make_thread(receive)
-
 tkinter.mainloop()
 
 if not messenger.dev:
