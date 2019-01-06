@@ -114,8 +114,7 @@ class GPGClient(Client):
         self.markAsDelivered(thread_id, message_object.uid)
         self.markAsRead(thread_id)
 
-        if author_id != self.uid:
-            self.recieved, self.message = True, message_object
+        self.recieved, self.message = True, message_object
 
 config = load_file(SETTINGS, lambda x: json.load(x))
 dev = config["dev"]

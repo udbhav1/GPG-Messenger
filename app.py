@@ -77,7 +77,7 @@ def send(event=None):
         master.quit()
     entry_field.delete("1.0", END)
 
-    update_messages(client.send_message(tosend, recipientid, recipientkeyid))
+    client.send_message(tosend, recipientid, recipientkeyid)
     return 'break'
 
 def receive():
@@ -140,9 +140,9 @@ msg_list.pack(side=tkinter.LEFT, fill=tkinter.BOTH, expand=True)
 entry_field = createField(send, "Type a message", {"wrap": tkinter.WORD, "height": 2, "width": 128}, {"row":2, "column":1, "columnspan": 4})
 recipient_field = createField(updateRecipient, "Update Recipient", {"height": 1, "width": 25}, {"row":2, "column":0})
 
-tkinter.mainloop()
-
 messenger.make_thread(receive)
+
+tkinter.mainloop()
 
 if not messenger.dev:
     client.logout()
