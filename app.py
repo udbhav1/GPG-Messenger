@@ -73,8 +73,10 @@ def update_last(n=HISTORY):
 def send(event=None):
     """ Attempts to encrypt and send the message in the entry_field text box """
     tosend = entry_field.get("1.0", END)
-    if tosend == "#QUIT":
+    if tosend == "#QUIT\n":
         master.quit()
+        return
+
     entry_field.delete("1.0", END)
 
     client.send_message(tosend, recipientid, recipientkeyid)
@@ -84,8 +86,9 @@ def receive():
     while True:
         time.sleep(DELAY)
         if client.recieved:
-            parse_fb_message(client.message)
             client.recieved = False
+            if client.thread == recipientid:
+                parse_fb_message(client.message)
 
 def listbox_update_recipient(event=None):
     """ Triggered when an item is selected in the listbox of recipients """

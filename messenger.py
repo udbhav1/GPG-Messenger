@@ -89,7 +89,7 @@ def make_thread(f):
 
 class GPGClient(Client):
 
-    def init(self): self.recieved, self.message = False, ""
+    def init(self): self.recieved, self.message, self.thread = False, None, 0
 
     def send_message(self, msg, uid, fingerprint):
         """ Sends an message over the chat backend, attempts to encrypt so that both
@@ -114,7 +114,7 @@ class GPGClient(Client):
         self.markAsDelivered(thread_id, message_object.uid)
         self.markAsRead(thread_id)
 
-        self.recieved, self.message = True, message_object
+        self.recieved, self.message, self.thread = True, message_object, thread_id
 
 config = load_file(SETTINGS, lambda x: json.load(x))
 dev = config["dev"]
