@@ -2,3 +2,4 @@
 config.json
 cookie.gpg
 stdout.log
+__pycache__
