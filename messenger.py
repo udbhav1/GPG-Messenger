@@ -1,4 +1,5 @@
-import sys, os, pickle, json, logging
+import datetime
+import sys, os, pickle, json, time, logging, threading
 import fbchat
 from fbchat import Client
 from fbchat.models import *
@@ -9,6 +10,7 @@ import gnupg
 
 #logging.basicConfig(filename='stdout.log', level=logging.DEBUG)
 
+HEADER = "-----BEGIN PGP MESSAGE-----"
 SETTINGS = "config.json"
 HELPSTR = """GPG-Messenger v1
 
@@ -19,16 +21,28 @@ Commands:
 global  Edits the top-level settings
 help    Shows this help for commands. """
 
-defaults = {SETTINGS: {"gpg":{"gpgbinary": "gpg", "gnupghome": f"{os.environ['HOME']}/.gnupg/"}, "backend":"facebook"},
+defaults = {SETTINGS: {"gpg":{"gpgbinary": "gpg", "gnupghome": f"{os.environ['HOME']}/.gnupg/"}, "backend":"facebook", "dev": False},
             "cookie.gpg": {},
            }
+
+def actual_time(ts):
+    """ Takes in a UNIX timestamp and spits out actual time as a string without microseconds. """
+    dt = datetime.datetime.fromtimestamp(float(ts)/1000.0)
+    dt = dt.replace(microsecond=0)
+    return str(dt)
+
+def format_message(time, msg, author="You "):
+    return f"{actual_time(time)} {str(author.split()[0])}: {msg}"
+
+def decrypt_message(msg):
+    return str(gpg.decrypt(msg)) if msg.split("\n")[0].strip() == HEADER else msg
 
 def tty_input(prompt, default):
     ans = input(prompt + f"? Default {default}: ").strip()
     return ans if len(ans) != 0 else default
 
 def setup_global_settings(**kwargs):
-    prompts = {"binary": "What is the name/path of your gpg binary", "homedir": "Where are your keys stored"}
+    prompts = {"gpgbinary": "What is the name/path of your gpg binary", "gnupghome": "Where are your keys stored"}
     for param, default in defaults[SETTINGS]["gpg"].items():
         if param not in kwargs:
             kwargs[param] = tty_input(prompts[param], default)
@@ -65,15 +79,45 @@ def make_client(tfa=None):
     if config["2FA"]:
         if tfa is None: tfa = input("Please enter your 2FA code --> ")
         Client.on2FACode = lambda x: tfa
-    client = Client(config["username"], get_pass(config["pass"]), session_cookies=cookies)
+    client = GPGClient(config["username"], get_pass(config["pass"]), session_cookies=cookies)
     with open("cookie.gpg", "w") as f:
         f.write(str(gpg.encrypt(pickle.dumps(client.getSession()), keyid)))
     return client
 
-class GPGClient():
+class GPGClient(Client):
 
-    def __init__(self):
-        self.client = make_client()
+    def init(self): self.recieved, self.message = False, ""
+
+    def send_message(self, msg, uid, fingerprint):
+        """ Sends an message over the chat backend, attempts to encrypt so that both
+        recipient and author can decrypt, but only encrypts if you have their public key
+
+        msg [str]: message to be sent
+        uid [int]: facebook id of the user to send to
+        fingerprint [str]: gpg fingerprint of the recipient (None if does not exit [DNE])
+
+        returns formatted str of original msg
+        """
+
+        encrypted = str(gpg.encrypt(msg, [fingerprint, keyid])) if fingerprint != None else msg
+        self.send(Message(text=encrypted), thread_id=uid, thread_type=ThreadType.USER)
+        return format_message(time.time(), msg)
+
+    def onMessage(self, author_id, message_object, thread_id, thread_type, **kwargs):
+        """ Recives a message from a given user
+        Uses instance variables to return value
+        """
+
+        self.markAsDelivered(thread_id, message_object.uid)
+        self.markAsRead(thread_id)
+
+        if author_id != self.uid:
+            self.recieved, self.message = True, message_object
+
+def start(): client.listen()
+
+config = load_file(SETTINGS, lambda x: json.load(x))
+dev = config["dev"]
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
@@ -84,12 +128,18 @@ if __name__ == "__main__":
             setup_global_settings()
         elif com in ["facebook"]:
             setup_settings(com)
-    #sys.exit()
+    if not dev:
+        sys.exit()
 
-config = load_file(SETTINGS, lambda x: json.load(x))
 gpg = gnupg.GPG(**config["gpg"])
 keyid = gpg.list_keys(True)[0]['keyid']
 
 config = load_file(f"accounts/{config['backend']}/{SETTINGS}", lambda x: json.load(x))
 cookies = load_file("cookie.gpg", lambda x: pickle.loads(gpg.decrypt(x.read()).data))
+
 client = make_client()
+client.init()
+
+receive_thread = threading.Thread(target=start)
+receive_thread.daemon = True
+receive_thread.start()
