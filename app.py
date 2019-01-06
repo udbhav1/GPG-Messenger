@@ -11,8 +11,6 @@ END = tkinter.END
 
 client = messenger.client
 recipient = recipientid = recipientkeyid = None
-defaultMessageText = "Type a message"
-defaultRecipientText = "Update Recipient"
 
 def error(title, text):
     """ Shows alert box. """
@@ -20,6 +18,7 @@ def error(title, text):
 
 def parse_fb_message(msg):
     update_messages(messenger.format_message(msg.timestamp, messenger.decrypt_message(msg.text), recipient if msg.author == recipientid else "You "))
+    return msg
 
 def update_messages(text):
     msg_list.insert(END, text)
@@ -40,9 +39,9 @@ def updateRecipient(event=None):
         users = client.searchForUsers(entry)
         recipientid = users[0].uid
     except messenger.FBchatException:
-        print("Facebook error: Try again later")
+        error("Error", "Facebook chat exception")
     except IndexError:
-        print("Error: User not found")
+        error("Error", "User not found \n\nTry again")
     else:
         recipient = entry
         # update status bar
@@ -56,7 +55,7 @@ def updateRecipient(event=None):
                 if recipient.lower() in uid.lower():
                     recipientkeyid = key["keyid"]
         # warn user if key not found
-        if recipientkeyid == None:
+        if recipientkeyid is None:
             error("Warning", "Recipient public key not found \n\nMessages will not be encrypted")
         # clear listbox before updating
         msg_list.delete(0, END)
@@ -67,11 +66,9 @@ def updateLast(n=HISTORY):
     Gets a bit of history instead of just an empty box.
     n [int]: takes in how many messages to update
     """
-    try:
-        prev = client.fetchThreadMessages(thread_id=recipientid, limit=n)[::-1]
-    except messenger.FBchatException:
-        return
-    for i in prev: parse_fb_message(i)
+    try: prev = client.fetchThreadMessages(thread_id=recipientid, limit=n)[::-1]
+    except messenger.FBchatException: return []
+    return list(map(parse_fb_message, prev))
 
 def send(event=None):
     """ Attempts to encrypt and send the message in the entry_field text box """
@@ -110,8 +107,15 @@ def updateDefaultText(field, text, event):
     elif current == "\n":
         field.insert("1.0", text)
 
-updateDefaultMessageText = lambda event=None: updateDefaultText(entry_field, defaultMessageText, event)
-updateDefaultRecipientText = lambda event=None: updateDefaultText(recipient_field, defaultRecipientText, event)
+def createField(f, text, tkparam, gridparam):
+    field = tkinter.Text(master, **tkparam, borderwidth=2, relief=tkinter.RIDGE)
+    field.insert(END, text)
+    field.grid(**gridparam)
+    field.bind("<Return>", f)
+    f = lambda event=None: updateDefaultText(field, text, event)
+    field.bind("<FocusIn>", f)
+    field.bind("<FocusOut>", f)
+    return field
 
 master = tkinter.Tk()
 master.title("GPG Messenger Client")
@@ -133,27 +137,12 @@ msg_list = tkinter.Listbox(msg_frame, height=30, width=100, yscrollcommand=scrol
 scrollbar.pack(side=tkinter.RIGHT, fill=tkinter.Y)
 msg_list.pack(side=tkinter.LEFT, fill=tkinter.BOTH, expand=True)
 
-# messages entered here
-entry_field = tkinter.Text(master, wrap=tkinter.WORD, height=2, width=128, borderwidth=2, relief=tkinter.RIDGE)
-entry_field.insert(END, defaultMessageText)
-entry_field.grid(row=2,column=1, columnspan=4)
-entry_field.bind("<Return>", send)
-entry_field.bind("<FocusIn>", updateDefaultMessageText)
-entry_field.bind("<FocusOut>", updateDefaultMessageText)
-
-# to change recipient
-recipient_field = tkinter.Text(master, width=25, height=1, borderwidth=2, relief=tkinter.RIDGE)
-recipient_field.insert(END, defaultRecipientText)
-recipient_field.grid(row=2,column=0)
-recipient_field.bind("<Return>", updateRecipient)
-recipient_field.bind("<FocusIn>", updateDefaultRecipientText)
-recipient_field.bind("<FocusOut>", updateDefaultRecipientText)
-
-receive_thread = threading.Thread(target=receive)
-receive_thread.daemon = True
-receive_thread.start()
+entry_field = createField(send, "Type a message", {"wrap": tkinter.WORD, "height": 2, "width": 128}, {"row":2, "column":1, "columnspan": 4})
+recipient_field = createField(updateRecipient, "Update Recipient", {"height": 1, "width": 25}, {"row":2, "column":0})
 
 tkinter.mainloop()
+
+messenger.make_thread(receive)
 
 if not messenger.dev:
     client.logout()

@@ -76,13 +76,16 @@ def get_pass(fname):
     return str(gpg.decrypt_file(open(fname, "rb"))).split("\n")[0]
 
 def make_client(tfa=None):
-    if config["2FA"]:
-        if tfa is None: tfa = input("Please enter your 2FA code --> ")
-        Client.on2FACode = lambda x: tfa
+    if config["2FA"] and tfa is not None: Client.on2FACode = tfa
     client = GPGClient(config["username"], get_pass(config["pass"]), session_cookies=cookies)
     with open("cookie.gpg", "w") as f:
         f.write(str(gpg.encrypt(pickle.dumps(client.getSession()), keyid)))
     return client
+
+def make_thread(f):
+    thread = threading.Thread(target=f)
+    thread.daemon = True
+    thread.start()
 
 class GPGClient(Client):
 
@@ -114,8 +117,6 @@ class GPGClient(Client):
         if author_id != self.uid:
             self.recieved, self.message = True, message_object
 
-def start(): client.listen()
-
 config = load_file(SETTINGS, lambda x: json.load(x))
 dev = config["dev"]
 
@@ -140,6 +141,4 @@ cookies = load_file("cookie.gpg", lambda x: pickle.loads(gpg.decrypt(x.read()).d
 client = make_client()
 client.init()
 
-receive_thread = threading.Thread(target=start)
-receive_thread.daemon = True
-receive_thread.start()
+make_thread(f=lambda: client.listen())
