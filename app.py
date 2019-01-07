@@ -99,7 +99,6 @@ def listbox_update_recipient(event=None):
             recipient_field.insert(END, recipients_list.get(recipients_list.curselection()[0]))
             update_recipient()
             recipient_field.delete("1.0", END)
-            recipient_field.insert("1.0", defaultRecipientText)
 
 def update_default_text(field, text, event):
     """ Manages the default text a box. """
