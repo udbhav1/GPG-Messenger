@@ -15,7 +15,7 @@ Libraries used:
 $ echo "FACEBOOK_PASSWORD" | gpg --armor -r "YOUR_PUBLIC_KEY" -e > FILENAME
 ```
 2. Create an empty file called **config.json** with the path /accounts/facebook/config.json in the project folder
-3. Navigate to the directory where the files are saved and run `python messenger.py facebook`
+3. Navigate to the directory where the files are saved and run `python3 messenger.py facebook`
 and follow the prompts.
 
 4. Finally, to launch the app, run
