@@ -1,24 +1,22 @@
 # GPG-Messenger
-GnuPG (GPG) based messenger client that implements the openPGP encryption standard while using Facebook Messenger or an equivalent as a backend. Very similar to [Pidgin](https://pidgin.im/) or [Adium](https://adium.im/).
+GnuPG (GPG) based messenger client that implements the openPGP encryption standard while using Facebook Messenger or an equivalent messaging platform as a backend. Very similar to [Pidgin](https://pidgin.im/) or [Adium](https://adium.im/).
 
 Implemented using [**Python 3.7**](https://www.python.org/).
 
-Libraries used:
-- [fbchat](https://fbchat.readthedocs.io/en/master/)
-- [python-gnupg](https://pythonhosted.org/python-gnupg/)
-- tkinter
+Libraries used: Check the Pipfile!
 
 ## Setup
 
-1. Create and gpg-encrypt a text file that contains your facebook password with:
+1. Run `pipenv install` in the directory which you downloaded this respository (henceforth known as the "root" path).
+2. Create and gpg-encrypt a text file that contains your facebook password with:
 ```
 $ echo "FACEBOOK_PASSWORD" | gpg --armor -r "YOUR_PUBLIC_KEY" -e > FILENAME
 ```
-2. Create an empty file called **config.json** with the path /accounts/facebook/config.json in the project folder
-3. Navigate to the directory where the files are saved and run `python3 messenger.py facebook`
+3. Create an empty file called **config.json** with the path /accounts/facebook/config.json relative to root.
+4. Navigate to the root directory and run `pipenv run python messenger.py facebook`
 and follow the prompts.
 
-4. Finally, to launch the app, run
+5. Finally, to launch the app, run
 ```
-$ python3 app.py
+$ pipenv run python app.py
 ```
