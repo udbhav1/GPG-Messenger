@@ -18,5 +18,5 @@ and follow the prompts.
 
 5. Finally, to launch the app, run
 ```
-$ pipenv run python app.py
+$ pipenv run python3 app.py
 ```
