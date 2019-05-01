@@ -1,148 +1,403 @@
-import tkinter, threading, time
-from tkinter import messagebox
+from kivy.app import App
+from kivy.lang import Builder
+from kivy.clock import Clock
+from kivy.properties import ListProperty
+from kivy.properties import ObjectProperty
+from kivy.properties import BooleanProperty
+from kivy.animation import Animation
+from functools import partial
+from kivy.core.window import Window
+from kivy.factory import Factory
+from kivy.uix.button import Button
+import emoji
+import threading, time
+from fbchat import Client
+from fbchat.models import *
+
 import messenger
-
-#By Udbhav Muthakana, Stephen Huan
-#GUI messenging app
-
+global client
+client = messenger.client
 HISTORY = 50
 DELAY = 0.1
-END = tkinter.END
+#fbchat uid mapped to name
+global uid_to_name
+uid_to_name = {}
+#member uids in active chat
+global current_members
+current_members = []
+#whether to encrypt
+global encrypt
+encrypt = False
+#current chat
+global active_chat_uid
+active_chat_uid = ''
+#type of chat that is open - USER or GROUP
+global active_chat_type
+active_chat_type = ""
+KV = '''
+#:import RGBA kivy.utils.rgba
+#:import Clock kivy.clock.Clock
+<ImageButton@ButtonBehavior+Image>:
+    size_hint: None, None
+    size: self.texture_size
+    canvas.before:
+        PushMatrix
+        Scale:
+            origin: self.center
+            x: .75 if self.state == 'down' else 1
+            y: .75 if self.state == 'down' else 1
+    canvas.after:
+        PopMatrix
+BoxLayout:
+    orientation: 'horizontal'
+    RecycleView:
+        id: rl
+        data: app.recipient_list
+        do_scroll_x: False
+        size_hint: 0.3, 1
+        viewclass: 'Recipient'
+        RecycleBoxLayout:
+            id: box
+            orientation: 'vertical'
+            size_hint_y: None
+            size: self.minimum_size
+            default_size_hint: 1, None
+            key_size: '_size'
+            padding: 0
+            spacing: 0
+            canvas.before:
+                Color:
+                    rgba: 1,1,1,1
+                RoundedRectangle:
+                    size: self.size
+                    pos: self.pos
+                    radius: 0,0,0,0
+    BoxLayout:
+        orientation: 'vertical'
+        canvas.before:
+            Color:
+                rgba: .5, .5, .5, 1
+            Line:
+                width: 1
+                rectangle: self.x, self.y, self.width, self.height
+        RecycleView:
+            id: rv
+            data: app.messages
+            viewclass: 'Message'
+            do_scroll_x: False
+            RecycleBoxLayout:
+                id: box
+                orientation: 'vertical'
+                size_hint_y: None
+                size: self.minimum_size
+                default_size_hint: 1, None
+                key_size: '_size'
+                spacing: 10
+        FloatLayout:
+            size_hint_y: None
+            height: 0
+            Button:
+                size_hint_y: None
+                height: self.texture_size[1]
+                opacity: 0 if not self.height else 1
+                text: 'go to last message' if rv.height < box.height and rv.scroll_y > 0 else ''
+                pos_hint: {'pos': (0, 0)}
+                on_release: app.scroll_bottom()
+        BoxLayout:
+            size_hint: 1, None
+            size: self.minimum_size
+            TextInput:
+                id: ti
+                size_hint: 1, None
+                height: min(max(self.line_height, self.minimum_height), 150)
+                multiline: False
+                on_text_validate:
+                    app.send_out(ti.text.strip())
+                    ti.text = ''
+                    app.schedule_refocus(ti)
+            ImageButton:
+                source: 'data/logo/kivy-icon-48.png'
+                on_release:
+                    app.send_out(ti.text.strip())
+                    ti.text = ''
+                    app.schedule_refocus(ti)
 
-client = messenger.client
-recipient = recipientid = recipientkeyid = None
+<Message@FloatLayout>:
+    message_id: -1
+    bg_color: '#0078FF'
+    side: 'left'
+    text: ''
+    m_color: 0, 0, 0, 1
+    size_hint_y: None
+    _size: 0, 0
+    rounding: (25, 10, 10, 25)
+    t_size: {'text_size': (None, None)}
+    Label:
+        text: root.text
+        color: root.m_color
+        padding: 15, 10
+        size_hint: None, None
+        size: self.texture_size
+        text_size: root.t_size['text_size']
 
-def error(title, text):
-    """ Shows alert box. """
-    messagebox.showerror(title, text)
+        on_texture_size:
+            message = dict(app.messages[root.message_id])
+            message['_size'] = self.texture_size
+            app.messages[root.message_id] = message
+        pos_hint:
+            (
+            {'x': 0, 'center_y': .5}
+            if root.side == 'left' else
+            {'right': 1, 'center_y': .5}
+            )
+        canvas.before:
+            Color:
+                rgba: RGBA(root.bg_color)
+            RoundedRectangle:
+                size: self.size
+                pos: self.pos
+                radius: root.rounding
+<Recipient@FloatLayout>:
+    r_id: -1
+    bg_color: (0.847, 0.847, 0.847, 1)
+    side: 'left'
+    text: ''
+    m_color: 0, 0, 0, 1
+    size_hint_y: None
+    _size: 0, 0
+    t_size: {'text_size': (None, None)}
+    chat_uid: ""
+    type: "USER"
+    HoverButton:
+        text: root.text
+        color: root.m_color
+        background_normal: ''
+        background_color: (0.949,0.949,0.949,1) if self.hovered else (1,1,1,1)
+        padding: 0, 31
+        size_hint: 1, None
+        size: self.texture_size
+        text_size: root.t_size['text_size']
+        c_uid: root.chat_uid
+        on_press:
+            self.background_color=(0.6,0.6,0.6,1)
+            app.switch_recipient(self.c_uid, root.type)
+        on_texture_size:
+            recipient_list = dict(app.recipient_list[root.r_id])
+            recipient_list['_size'] = self.text_size
+            app.recipient_list[root.r_id] = recipient_list
+        pos_hint: {'x': 0, 'center_y': .5}
+        canvas.before:
+            Color:
+                rgba: .75, .75, .75, 1
+            Line:
+                width: 1
+                rectangle: self.x, self.y, self.width, self.height
+'''
 
-def parse_fb_message(msg):
-    update_messages(messenger.format_message(msg.timestamp, messenger.decrypt_message(msg.text), recipient if msg.author == recipientid else "You "))
-    return msg
+class GPG_Messenger(App):
 
-def update_messages(text):
-    msg_list.insert(END, text)
-    msg_list.insert(END, "")
-    # scroll to bottom
-    msg_list.yview(END)
+    recipient_list = ListProperty()
+    messages = ListProperty()
 
-def update_recipient(event=None):
-    """ Changes who to chat with and checks for a public key. """
-    global recipient
-    global recipientid
-    global recipientkeyid
-    global status
-    entry = recipient_field.get("1.0", END).strip()
-    recipient_field.delete("1.0", END)
-    recipientkeyid = None
-    try:
-        users = client.searchForUsers(entry)
-        recipientid = users[0].uid
-    except messenger.FBchatException:
-        error("Error", "Facebook chat exception")
-    except IndexError:
-        error("Error", "User not found \n\nTry again")
-    else:
-        recipient = entry
-        # update status bar
-        status_bar['text'] = f"Chatting with: {recipient}"
-        # update recipients list
-        if not (recipient in recipients_list.get(0, "end")):
-            recipients_list.insert(END, recipient)
-        # try to find their public key
-        for key in messenger.gpg.list_keys():
-            for uid in key["uids"]:
-                if recipient.lower() in uid.lower():
-                    recipientkeyid = key["keyid"]
-        # warn user if key not found
-        if recipientkeyid is None:
-            error("Warning", "Recipient public key not found \n\nMessages will not be encrypted")
-        # clear listbox before updating
-        msg_list.delete(0, END)
-        update_last()
+    def __init__(self):
+        """
+        Obtains last 20 threads and adds them to the left hand bar
+        """
+        super().__init__()
+        threads = client.fetchThreadList()
+        for thread in threads:
+            self.add_recipient(thread.name, thread.uid, thread.type)
+        messenger.make_thread(self.receive)
 
-def update_last(n=HISTORY):
+    def build(self):
+        return Builder.load_string(KV)
+
+    def switch_recipient(self, chat_uid, chat_type, *args):
+        """
+        Called on press of button in kv - sets globals, clears messages, rebuilds UID to name map, and loads last 50 messages
+        """
+        global uid_to_name, current_members, active_chat_uid, active_chat_type
+        active_chat_type = chat_type
+        active_chat_uid = chat_uid
+        self.clear_messages()
+        #reset
+        uid_to_name = {}
+        if chat_type == "GROUP":
+            current_members = (client.fetchThreadInfo(chat_uid)[chat_uid]).participants
+        else:
+            current_members = {client.uid, chat_uid}
+        self.update_uid_to_name()
+        self.load_last(chat_uid, chat_type)
+
+    def update_uid_to_name(self):
+        """
+        Helper func to rebuild map of UIDs to names
+        """
+        global uid_to_name, current_members
+        for i in current_members:
+            if i != client.uid:
+                uid_to_name[i] = (client.fetchUserInfo(i)[i]).name
+
+    def load_last(self, chat_uid, chat_type, n = HISTORY, *args):
+        """
+        Loads last n (default 50) messages
+        """
+        global uid_to_name, current_members
+        try: prev = client.fetchThreadMessages(thread_id=chat_uid, limit=n)[::-1]
+        except messenger.FBchatException:
+            print("FBchatException")
+            return []
+
+        if chat_type == "USER":
+            for i in prev:
+                if i.author != chat_uid:
+                    self.send_message(i.text)
+                else:
+                    self.receive_message(i.text)
+        else:
+            for i in prev:
+                if i.author != client.uid and i.author in uid_to_name.keys():
+                    first_name = uid_to_name[i.author].split(" ")[0]
+                    self.receive_message(f"{first_name}: {i.text}")
+                else:
+                    self.send_message(i.text)
+
+        self.scroll_bottom()
+
+    def clear_messages(self):
+        self.messages = []
+
+    def add_message(self, text, side, bg_color, text_color, rounding, t_size):
+        """
+        Adds a message to the GUI
+        """
+        self.messages.append({
+            'message_id': len(self.messages),
+            'text': text,
+            'side': side,
+            'bg_color': bg_color,
+            'm_color': text_color,
+            'rounding': rounding,
+            't_size': {'text_size': (t_size, None)}
+        })
+
+    def add_recipient(self, name, uid, type):
+        """
+        Adds a clickable recipient to the GUI
+        """
+        if type == ThreadType.USER:
+            t = "USER"
+        if type == ThreadType.GROUP:
+            t = "GROUP"
+        self.recipient_list.append({
+            'r_id': len(self.recipient_list),
+            'text': name,
+            'side': 'left',
+            'chat_uid': uid,
+            'type': t
+        })
+
+    def send_message(self, text):
+        """
+        Wraps text and calls add_message on the the right
+        """
+        if text != None and text.strip() != "":
+            wrap = None
+            if(len(text.strip()) > 50):
+                wrap = 760
+            self.add_message(text, 'right', '#0078FF', (1,1,1,1), (25,5,5,25), wrap)
+
+    def send_out(self, text):
+        """
+        Triggered on enter or clicking the kivy logo - actually sends out message through facebook and calls send_message for the GUI
+        """
+        global active_chat_uid, active_chat_type
+        self.send_message(text)
+        client.send_message(text, active_chat_uid, active_chat_type, None)
+
+    def receive(self):
+        while True:
+            time.sleep(0.1)
+            if client.received:
+                client.received = False
+                if client.thread == active_chat_uid and client.author_uid != client.uid:
+                    self.receive_message(client.message.text)
+
+    def receive_message(self, text):
+        """
+        Wraps text and calls add_message on the the left
+        """
+        if text != None and text.strip() != "":
+            wrap = None
+            if(len(text.strip()) > 50):
+                wrap = 760
+            self.add_message(text, 'left', '#F1F0F0', (0,0,0,1), (5,25,25,5), wrap)
+
+    def scroll_bottom(self):
+        """
+        Animates a scroll to the bottom of the messages in d=*seconds* time
+        """
+        Animation.cancel_all(self.root.ids.rv, 'scroll_y')
+        Animation(scroll_y=0, t='out_quad', d=.3).start(self.root.ids.rv)
+
+    def schedule_refocus(self, obj):
+        """
+        Used for text entry box - needs to schedule or it won't work
+        """
+        Clock.schedule_once(partial(self.refocus, obj), 0.05)
+
+    def refocus(self, obj, *args):
+        obj.focus = True
+
+class HoverBehavior(object):
+    """Hover behavior.
+    :Events:
+        `on_enter`
+            Fired when mouse enter the bbox of the widget.
+        `on_leave`
+            Fired when the mouse exit the widget
     """
-    Gets a bit of history instead of just an empty box.
-    n [int]: takes in how many messages to update
-    """
-    try: prev = client.fetchThreadMessages(thread_id=recipientid, limit=n)[::-1]
-    except messenger.FBchatException: return []
-    return list(map(parse_fb_message, prev))
 
-def send(event=None):
-    """ Attempts to encrypt and send the message in the entry_field text box """
-    tosend = entry_field.get("1.0", END)
-    if tosend == "#QUIT\n":
-        master.quit()
-        return
+    hovered = BooleanProperty(False)
+    border_point= ObjectProperty(None)
+    '''Contains the last relevant point received by the Hoverable. This can
+    be used in `on_enter` or `on_leave` in order to know where was dispatched the event.
+    '''
 
-    entry_field.delete("1.0", END)
+    def __init__(self, **kwargs):
+        self.register_event_type('on_enter')
+        self.register_event_type('on_leave')
+        Window.bind(mouse_pos=self.on_mouse_pos)
+        super(HoverBehavior, self).__init__(**kwargs)
 
-    client.send_message(tosend, recipientid, recipientkeyid)
+    def on_mouse_pos(self, *args):
+        if not self.get_root_window():
+            return # do proceed if I'm not displayed <=> If have no parent
+        pos = args[1]
+        #Next line to_widget allow to compensate for relative layout
+        inside = self.collide_point(*self.to_widget(*pos))
+        if self.hovered == inside:
+            #We have already done what was needed
+            return
+        self.border_point = pos
+        self.hovered = inside
+        if inside:
+            self.dispatch('on_enter')
+        else:
+            self.dispatch('on_leave')
 
-def receive():
-    """ Threaded function to continuously receive messages. """
-    while True:
-        time.sleep(DELAY)
-        if client.recieved:
-            client.recieved = False
-            if client.thread == recipientid:
-                parse_fb_message(client.message)
+    def on_enter(self):
+        pass
 
-def listbox_update_recipient(event=None):
-    """ Triggered when an item is selected in the listbox of recipients """
-    if len(recipients_list.curselection()) != 0:
-        if recipients_list.get(recipients_list.curselection()[0]) != recipient:
-            # roundabout way to use update_recipient() rather than making a new func
-            recipient_field.delete("1.0", END)
-            recipient_field.insert(END, recipients_list.get(recipients_list.curselection()[0]))
-            update_recipient()
-            recipient_field.delete("1.0", END)
+    def on_leave(self):
+        pass
+Factory.register('HoverBehavior', HoverBehavior)
+class HoverButton(Button, HoverBehavior):
+        def on_enter(self, *args):
+            pass
+        def on_leave(self, *args):
+            pass
 
-def update_default_text(field, text, event):
-    """ Manages the default text a box. """
-    current = field.get("1.0", END)
-    if current == text + "\n":
-        field.delete("1.0", END)
-    elif current == "\n":
-        field.insert("1.0", text)
-
-def create_field(f, text, tkparam, gridparam):
-    field = tkinter.Text(master, **tkparam, borderwidth=2, relief=tkinter.RIDGE)
-    field.insert(END, text)
-    field.grid(**gridparam)
-    field.bind("<Return>", f)
-    f = lambda event=None: update_default_text(field, text, event)
-    field.bind("<FocusIn>", f)
-    field.bind("<FocusOut>", f)
-    return field
-
-master = tkinter.Tk()
-master.title("GPG Messenger Client")
-
-# shows who you're currently chatting with
-status_bar = tkinter.Label(master, text="Chatting with: No one :(")
-status_bar.grid(row=0,column=2)
-
-recipients_list = tkinter.Listbox(master, height=30, width=30)
-recipients_list.grid(row=1,column=0)
-recipients_list.bind('<FocusOut>', lambda e: recipients_list.selection_clear(0, END))
-recipients_list.bind('<<ListboxSelect>>', listbox_update_recipient)
-
-msg_frame = tkinter.Frame(master)
-msg_frame.grid(row=1,column=1, columnspan=4)
-
-scrollbar = tkinter.Scrollbar(msg_frame)
-msg_list = tkinter.Listbox(msg_frame, height=30, width=100, yscrollcommand=scrollbar.set)
-scrollbar.pack(side=tkinter.RIGHT, fill=tkinter.Y)
-msg_list.pack(side=tkinter.LEFT, fill=tkinter.BOTH, expand=True)
-
-entry_field = create_field(send, "Type a message", {"wrap": tkinter.WORD, "height": 2, "width": 128}, {"row":2, "column":1, "columnspan": 4})
-recipient_field = create_field(update_recipient, "Update Recipient", {"height": 1, "width": 25}, {"row":2, "column":0})
-
-messenger.make_thread(receive)
-tkinter.mainloop()
-
-if not messenger.dev:
-    client.logout()
+Window.clearcolor = (1, 1, 1, 1)
+if __name__ == '__main__':
+    GPG_Messenger().run()

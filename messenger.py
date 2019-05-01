@@ -89,9 +89,9 @@ def make_thread(f):
 
 class GPGClient(Client):
 
-    def init(self): self.recieved, self.message, self.thread = False, None, 0
+    def init(self): self.received, self.message, self.thread, self.author_uid = False, None, 0, 0
 
-    def send_message(self, msg, uid, fingerprint):
+    def send_message(self, msg, uid, chat_type, fingerprint):
         """ Sends an message over the chat backend, attempts to encrypt so that both
         recipient and author can decrypt, but only encrypts if you have their public key
 
@@ -103,7 +103,8 @@ class GPGClient(Client):
         """
 
         encrypted = str(gpg.encrypt(msg, [fingerprint, keyid])) if fingerprint != None else msg
-        self.send(Message(text=encrypted), thread_id=uid, thread_type=ThreadType.USER)
+        type = ThreadType.USER if chat_type == "USER" else ThreadType.GROUP
+        self.send(Message(text=encrypted), thread_id=uid, thread_type=type)
         return format_message(time.time(), msg)
 
     def onMessage(self, author_id, message_object, thread_id, thread_type, **kwargs):
@@ -114,7 +115,7 @@ class GPGClient(Client):
         self.markAsDelivered(thread_id, message_object.uid)
         self.markAsRead(thread_id)
 
-        self.recieved, self.message, self.thread = True, message_object, thread_id
+        self.received, self.message, self.thread, self.author_uid = True, message_object, thread_id, author_id
 
 config = load_file(SETTINGS, lambda x: json.load(x))
 dev = config["dev"]
