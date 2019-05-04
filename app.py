@@ -9,7 +9,8 @@ from functools import partial
 from kivy.core.window import Window
 from kivy.factory import Factory
 from kivy.uix.button import Button
-import emoji
+from kivy.uix.label import Label
+from kivy.uix.floatlayout import FloatLayout
 import threading, time
 from fbchat import Client
 from fbchat.models import *
@@ -20,20 +21,15 @@ client = messenger.client
 HISTORY = 50
 DELAY = 0.1
 #fbchat uid mapped to name
-global uid_to_name
 uid_to_name = {}
 #member uids in active chat
-global current_members
 current_members = []
-#whether to encrypt
-global encrypt
-encrypt = False
 #current chat
-global active_chat_uid
 active_chat_uid = ''
 #type of chat that is open - USER or GROUP
-global active_chat_type
 active_chat_type = ""
+#public keys of everyone in the chat in the order of current_members
+gpg_keys = []
 KV = '''
 #:import RGBA kivy.utils.rgba
 #:import Clock kivy.clock.Clock
@@ -206,7 +202,10 @@ class GPG_Messenger(App):
         super().__init__()
         threads = client.fetchThreadList()
         for thread in threads:
-            self.add_recipient(thread.name, thread.uid, thread.type)
+            n = thread.name
+            if n == None:
+                n = "Unnamed"
+            self.add_recipient(n, thread.uid, thread.type)
         messenger.make_thread(self.receive)
 
     def build(self):
@@ -216,18 +215,34 @@ class GPG_Messenger(App):
         """
         Called on press of button in kv - sets globals, clears messages, rebuilds UID to name map, and loads last 50 messages
         """
-        global uid_to_name, current_members, active_chat_uid, active_chat_type
+        global uid_to_name, current_members, active_chat_uid, active_chat_type, gpg_keys
         active_chat_type = chat_type
         active_chat_uid = chat_uid
         self.clear_messages()
         #reset
         uid_to_name = {}
+        gpg_keys = []
         if chat_type == "GROUP":
             current_members = (client.fetchThreadInfo(chat_uid)[chat_uid]).participants
         else:
             current_members = {client.uid, chat_uid}
         self.update_uid_to_name()
+        self.update_keys()
         self.load_last(chat_uid, chat_type)
+
+    def update_keys(self):
+        global uid_to_name, current_members, gpg_keys
+        for user_id in current_members:
+            if user_id != client.uid:
+                for key in messenger.gpg.list_keys():
+                    for uid in key["uids"]:
+                        name = uid_to_name[user_id]
+                        if name.lower() in uid.lower() and not (key["keyid"] in gpg_keys):
+                            gpg_keys.append(key["keyid"])
+
+        if len(gpg_keys) != (len(current_members)-1):
+            #shouldn't encrypt
+            gpg_keys = None
 
     def update_uid_to_name(self):
         """
@@ -253,12 +268,12 @@ class GPG_Messenger(App):
                 if i.author != chat_uid:
                     self.send_message(i.text)
                 else:
-                    self.receive_message(i.text)
+                    self.receive_message(i.text, None)
         else:
             for i in prev:
                 if i.author != client.uid and i.author in uid_to_name.keys():
                     first_name = uid_to_name[i.author].split(" ")[0]
-                    self.receive_message(f"{first_name}: {i.text}")
+                    self.receive_message(i.text, first_name)
                 else:
                     self.send_message(i.text)
 
@@ -302,6 +317,7 @@ class GPG_Messenger(App):
         Wraps text and calls add_message on the the right
         """
         if text != None and text.strip() != "":
+            text = messenger.decrypt_message(text)
             wrap = None
             if(len(text.strip()) > 50):
                 wrap = 760
@@ -311,28 +327,37 @@ class GPG_Messenger(App):
         """
         Triggered on enter or clicking the kivy logo - actually sends out message through facebook and calls send_message for the GUI
         """
-        global active_chat_uid, active_chat_type
+        global active_chat_uid, active_chat_type, uid_to_name, current_members, gpg_keys
         self.send_message(text)
-        client.send_message(text, active_chat_uid, active_chat_type, None)
+
+        client.send_message(text, active_chat_uid, active_chat_type, gpg_keys)
 
     def receive(self):
+        global uid_to_name
         while True:
             time.sleep(0.1)
             if client.received:
                 client.received = False
                 if client.thread == active_chat_uid and client.author_uid != client.uid:
-                    self.receive_message(client.message.text)
+                    self.receive_message(client.message.text, uid_to_name[client.author_uid])
 
-    def receive_message(self, text):
+    def receive_message(self, text, name):
         """
         Wraps text and calls add_message on the the left
         """
+        global active_chat_type
         if text != None and text.strip() != "":
+            text = messenger.decrypt_message(text)
             wrap = None
             if(len(text.strip()) > 50):
                 wrap = 760
-            self.add_message(text, 'left', '#F1F0F0', (0,0,0,1), (5,25,25,5), wrap)
-
+            if name != None:
+                if active_chat_type == "GROUP":
+                    self.add_message(f"{name}: {text}", 'left', '#F1F0F0', (0,0,0,1), (5,25,25,5), wrap)
+                else:
+                    self.add_message(text, 'left', '#F1F0F0', (0,0,0,1), (5,25,25,5), wrap)
+            else:
+                self.add_message(text, 'left', '#F1F0F0', (0,0,0,1), (5,25,25,5), wrap)
     def scroll_bottom(self):
         """
         Animates a scroll to the bottom of the messages in d=*seconds* time
@@ -391,12 +416,16 @@ class HoverBehavior(object):
 
     def on_leave(self):
         pass
+
+
 Factory.register('HoverBehavior', HoverBehavior)
 class HoverButton(Button, HoverBehavior):
-        def on_enter(self, *args):
-            pass
-        def on_leave(self, *args):
-            pass
+    def on_enter(self, *args):
+        pass
+
+    def on_leave(self, *args):
+        pass
+
 
 Window.clearcolor = (1, 1, 1, 1)
 if __name__ == '__main__':

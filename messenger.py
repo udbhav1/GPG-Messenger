@@ -97,12 +97,16 @@ class GPGClient(Client):
 
         msg [str]: message to be sent
         uid [int]: facebook id of the user to send to
-        fingerprint [str]: gpg fingerprint of the recipient (None if does not exit [DNE])
+        fingerprint [array of str]: gpg fingerprints of the recipients (None if does not exit [DNE])
 
         returns formatted str of original msg
         """
-
-        encrypted = str(gpg.encrypt(msg, [fingerprint, keyid])) if fingerprint != None else msg
+        if fingerprint != None:
+            fingerprint.append(keyid)
+            print(fingerprint)
+            encrypted = str(gpg.encrypt(msg, fingerprint))
+        else:
+            encrypted = msg
         type = ThreadType.USER if chat_type == "USER" else ThreadType.GROUP
         self.send(Message(text=encrypted), thread_id=uid, thread_type=type)
         return format_message(time.time(), msg)
