@@ -11,25 +11,13 @@ from kivy.factory import Factory
 from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.floatlayout import FloatLayout
-import threading, time
-from fbchat import Client
-from fbchat.models import *
-
+import time
 import messenger
-global client
+
 client = messenger.client
-HISTORY = 50
+HISTORY = 10
 DELAY = 0.1
-#fbchat uid mapped to name
-uid_to_name = {}
-#member uids in active chat
-current_members = []
-#current chat
-active_chat_uid = ''
-#type of chat that is open - USER or GROUP
-active_chat_type = ""
-#public keys of everyone in the chat in the order of current_members
-gpg_keys = []
+
 KV = '''
 #:import RGBA kivy.utils.rgba
 #:import Clock kivy.clock.Clock
@@ -197,94 +185,86 @@ class GPG_Messenger(App):
 
     def __init__(self):
         """
-        Obtains last 20 threads and adds them to the left hand bar
+        Obtains the last 20 threads and adds them to the left hand bar.
         """
         super().__init__()
-        threads = client.fetchThreadList()
-        for thread in threads:
-            n = thread.name
-            if n == None:
-                n = "Unnamed"
-            self.add_recipient(n, thread.uid, thread.type)
+        for thread in client.fetchThreadList():
+            self.add_recipient(thread.name if thread.name is not None else "Unnamed", thread.uid, thread.type)
         messenger.make_thread(self.receive)
+        self.intialize()
 
-    def build(self):
-        return Builder.load_string(KV)
+    def intialize(self):
+        self.messages = []
+        #uid_to_name [dict] ([str] -> [str]): fbchat uid mapped to name
+        #current_members [list] of [str]: member uids in active chat
+        #active_chat_uid [str]: uid of the current chat
+        #active_chat_type [str]: type of chat that is open - either "USER" or "GROUP" (NOT the ThreadType.USER FBChat constant!)
+        #gpg_keys [list] of [str]: length 16 fingerpints of the public keys of everyone in the chat in the order of self.current_members
+        self.uid_to_name = {}
+        self.current_members = []
+        self.active_chat_uid = ''
+        self.active_chat_type = ""
+        self.gpg_keys = []
+
+    def build(self): return Builder.load_string(KV)
 
     def switch_recipient(self, chat_uid, chat_type, *args):
         """
-        Called on press of button in kv - sets globals, clears messages, rebuilds UID to name map, and loads last 50 messages
+        Called on press of button in kv - sets variables, clears messages, rebuilds UID to name map, and loads last 50 messages.
         """
-        global uid_to_name, current_members, active_chat_uid, active_chat_type, gpg_keys
-        active_chat_type = chat_type
-        active_chat_uid = chat_uid
-        self.clear_messages()
-        #reset
-        uid_to_name = {}
-        gpg_keys = []
+        self.intialize() #reset
+
+        self.active_chat_type = chat_type
+        self.active_chat_uid = chat_uid
+
         if chat_type == "GROUP":
-            current_members = (client.fetchThreadInfo(chat_uid)[chat_uid]).participants
+            self.current_members = (client.fetchThreadInfo(chat_uid)[chat_uid]).participants
         else:
-            current_members = {client.uid, chat_uid}
+            self.current_members = {client.uid, chat_uid}
         self.update_uid_to_name()
         self.update_keys()
         self.load_last(chat_uid, chat_type)
 
     def update_keys(self):
-        global uid_to_name, current_members, gpg_keys
-        for user_id in current_members:
+        for user_id in self.current_members:
             if user_id != client.uid:
                 for key in messenger.gpg.list_keys():
                     for uid in key["uids"]:
-                        name = uid_to_name[user_id]
-                        if name.lower() in uid.lower() and not (key["keyid"] in gpg_keys):
-                            gpg_keys.append(key["keyid"])
+                        name = self.uid_to_name[user_id]
+                        if name.lower() in uid.lower() and not (key["keyid"] in self.gpg_keys):
+                            self.gpg_keys.append(key["keyid"])
 
-        if len(gpg_keys) != (len(current_members)-1):
+        if len(self.gpg_keys) < len(self.current_members) - 1:
             #shouldn't encrypt
-            gpg_keys = None
+            self.gpg_keys = None
 
     def update_uid_to_name(self):
         """
-        Helper func to rebuild map of UIDs to names
+        Helper func to rebuild map of UIDs to names.
         """
-        global uid_to_name, current_members
-        for i in current_members:
+        for i in self.current_members:
             if i != client.uid:
-                uid_to_name[i] = (client.fetchUserInfo(i)[i]).name
+                self.uid_to_name[i] = (client.fetchUserInfo(i)[i]).name
 
-    def load_last(self, chat_uid, chat_type, n = HISTORY, *args):
+    def load_last(self, chat_uid, chat_type, n=HISTORY, *args):
         """
-        Loads last n (default 50) messages
+        Loads last n (default 50) messages.
         """
-        global uid_to_name, current_members
-        try: prev = client.fetchThreadMessages(thread_id=chat_uid, limit=n)[::-1]
+        try:
+            prev = client.fetchThreadMessages(thread_id=chat_uid, limit=n)[::-1]
         except messenger.FBchatException:
             print("FBchatException")
-            return []
+            return
 
-        if chat_type == "USER":
-            for i in prev:
-                if i.author != chat_uid:
-                    self.send_message(i.text)
-                else:
-                    self.receive_message(i.text, None)
-        else:
-            for i in prev:
-                if i.author != client.uid and i.author in uid_to_name.keys():
-                    first_name = uid_to_name[i.author].split(" ")[0]
-                    self.receive_message(i.text, first_name)
-                else:
-                    self.send_message(i.text)
+        for i in prev:
+            first_name = self.uid_to_name.get(i.author, "Unknown").split(" ")[0]
+            self.render_message(i.author, i.text, first_name)
 
         self.scroll_bottom()
 
-    def clear_messages(self):
-        self.messages = []
-
     def add_message(self, text, side, bg_color, text_color, rounding, t_size):
         """
-        Adds a message to the GUI
+        Adds a message to the GUI.
         """
         self.messages.append({
             'message_id': len(self.messages),
@@ -298,76 +278,55 @@ class GPG_Messenger(App):
 
     def add_recipient(self, name, uid, type):
         """
-        Adds a clickable recipient to the GUI
+        Adds a clickable recipient to the GUI.
         """
-        if type == ThreadType.USER:
-            t = "USER"
-        if type == ThreadType.GROUP:
-            t = "GROUP"
         self.recipient_list.append({
             'r_id': len(self.recipient_list),
             'text': name,
             'side': 'left',
             'chat_uid': uid,
-            'type': t
+            'type': "USER" if type == messenger.USER else "GROUP"
         })
 
-    def send_message(self, text):
+    def render_message(self, author, text, name=None):
         """
-        Wraps text and calls add_message on the the right
+        Wraps text and calls add_message.
         """
-        if text != None and text.strip() != "":
+
+        #TODO: find out a good name for var1 and var2
+        dir, color, var1, var2 = ("right", "#0078FF", (1,1,1,1), (25,5,5,25)) if author == client.uid else ("left", "#F1F0F0", (0,0,0,1), (5,25,25,5))
+
+        if text is not None and text.strip() != "":
             text = messenger.decrypt_message(text)
-            wrap = None
-            if(len(text.strip()) > 50):
-                wrap = 760
-            self.add_message(text, 'right', '#0078FF', (1,1,1,1), (25,5,5,25), wrap)
+            wrap = 760 if len(text.strip()) > 50 else None
+            msg = f"{name}: {text}" if self.active_chat_type == "GROUP" and author != client.uid else text
+            self.add_message(msg, dir, color, var1, var2, wrap)
 
     def send_out(self, text):
         """
-        Triggered on enter or clicking the kivy logo - actually sends out message through facebook and calls send_message for the GUI
+        Triggered on enter or clicking the kivy logo - actually sends out message through facebook and calls send_message for the GUI.
         """
-        global active_chat_uid, active_chat_type, uid_to_name, current_members, gpg_keys
-        self.send_message(text)
-
-        client.send_message(text, active_chat_uid, active_chat_type, gpg_keys)
+        self.render_message(client.uid, text)
+        client.send_message(text, self.active_chat_uid, self.active_chat_type, self.gpg_keys)
 
     def receive(self):
-        global uid_to_name
         while True:
-            time.sleep(0.1)
+            time.sleep(DELAY)
             if client.received:
                 client.received = False
-                if client.thread == active_chat_uid and client.author_uid != client.uid:
-                    self.receive_message(client.message.text, uid_to_name[client.author_uid])
+                if client.thread == self.active_chat_uid and client.author_uid != client.uid:
+                    self.receive_message(client.message.text, self.uid_to_name[client.author_uid])
 
-    def receive_message(self, text, name):
-        """
-        Wraps text and calls add_message on the the left
-        """
-        global active_chat_type
-        if text != None and text.strip() != "":
-            text = messenger.decrypt_message(text)
-            wrap = None
-            if(len(text.strip()) > 50):
-                wrap = 760
-            if name != None:
-                if active_chat_type == "GROUP":
-                    self.add_message(f"{name}: {text}", 'left', '#F1F0F0', (0,0,0,1), (5,25,25,5), wrap)
-                else:
-                    self.add_message(text, 'left', '#F1F0F0', (0,0,0,1), (5,25,25,5), wrap)
-            else:
-                self.add_message(text, 'left', '#F1F0F0', (0,0,0,1), (5,25,25,5), wrap)
     def scroll_bottom(self):
         """
-        Animates a scroll to the bottom of the messages in d=*seconds* time
+        Animates a scroll to the bottom of the messages in d=*seconds* time.
         """
         Animation.cancel_all(self.root.ids.rv, 'scroll_y')
         Animation(scroll_y=0, t='out_quad', d=.3).start(self.root.ids.rv)
 
     def schedule_refocus(self, obj):
         """
-        Used for text entry box - needs to schedule or it won't work
+        Used for text entry box - needs to schedule or it won't work.
         """
         Clock.schedule_once(partial(self.refocus, obj), 0.05)
 

@@ -25,6 +25,8 @@ defaults = {SETTINGS: {"gpg":{"gpgbinary": "gpg", "gnupghome": f"{os.environ['HO
             "cookie.gpg": {},
            }
 
+USER, GROUP = ThreadType.USER, ThreadType.GROUP
+
 def actual_time(ts):
     """ Takes in a UNIX timestamp and spits out actual time as a string without microseconds. """
     dt = datetime.datetime.fromtimestamp(float(ts)/1000.0)
@@ -91,29 +93,24 @@ class GPGClient(Client):
 
     def init(self): self.received, self.message, self.thread, self.author_uid = False, None, 0, 0
 
-    def send_message(self, msg, uid, chat_type, fingerprint):
+    def send_message(self, msg, uid, chat_type, fingerprints):
         """ Sends an message over the chat backend, attempts to encrypt so that both
-        recipient and author can decrypt, but only encrypts if you have their public key
+        recipient and author can decrypt, but only encrypts if you have their public key.
 
         msg [str]: message to be sent
         uid [int]: facebook id of the user to send to
-        fingerprint [array of str]: gpg fingerprints of the recipients (None if does not exit [DNE])
+        fingerprint [array of str]: gpg fingerprints of the recipients (None if does not exist [DNE])
 
         returns formatted str of original msg
         """
-        if fingerprint != None:
-            fingerprint.append(keyid)
-            print(fingerprint)
-            encrypted = str(gpg.encrypt(msg, fingerprint))
-        else:
-            encrypted = msg
-        type = ThreadType.USER if chat_type == "USER" else ThreadType.GROUP
+        encrypted = str(gpg.encrypt(msg, [*fingerprints, keyid])) if fingerprints is not None else msg
+        type = USER if chat_type == "USER" else GROUP
         self.send(Message(text=encrypted), thread_id=uid, thread_type=type)
         return format_message(time.time(), msg)
 
     def onMessage(self, author_id, message_object, thread_id, thread_type, **kwargs):
-        """ Recives a message from a given user
-        Uses instance variables to return value
+        """ Recives a message from a given user.
+        Uses instance variables to return value.
         """
 
         self.markAsDelivered(thread_id, message_object.uid)
