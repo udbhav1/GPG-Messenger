@@ -90,9 +90,15 @@ def get_key(name: str) -> str:
     if name in gpg_keys:
         return gpg_keys[name]
 
-    possible = [key for key in gpg.list_keys() for uid in key["uids"] if name.lower() in uid.lower()]
+    possible = []
+    for key in gpg.list_keys():
+        for uid in key["uids"]:
+            if name.lower() in uid.lower():
+                possible.append(key)
+                break
     if len(possible) > 0:
-        key = (prompt_user(possible) if len(possible) > 1 else possible[0])["keyid"]
+        key = (prompt_user(possible) if len(
+            possible) > 1 else possible[0])["keyid"]
         gpg_keys[name] = key
         with open("keys.pickle", "wb") as f:
             pickle.dump(gpg_keys, f)
