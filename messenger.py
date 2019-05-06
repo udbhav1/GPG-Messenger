@@ -33,6 +33,10 @@ def actual_time(ts) -> str:
     dt = dt.replace(microsecond=0)
     return str(dt)
 
+def is_encrypted(s: str) -> bool:
+    """ Returns whether a string is encrypted or not """
+    return s.split("\n")[0].strip() == HEADER
+
 def format_message(time, msg, author="You ") -> str:
     """ Formats a message with time and author """
     return f"{actual_time(time)} {str(author.split()[0])}: {msg}"
@@ -97,8 +101,7 @@ def get_key(name: str) -> str:
                 possible.append(key)
                 break
     if len(possible) > 0:
-        key = (prompt_user(possible) if len(
-            possible) > 1 else possible[0])["keyid"]
+        key = (prompt_user(possible) if len(possible) > 1 else possible[0])["keyid"]
         gpg_keys[name] = key
         with open("keys.pickle", "wb") as f:
             pickle.dump(gpg_keys, f)
@@ -146,10 +149,8 @@ class GPGClient(fbchat.Client):
         returns formatted str of original msg
         """
         encrypted = str(gpg.encrypt(msg, [*fingerprints, keyid])) if fingerprints is not None else msg
-        print(fingerprints)
-        print("ENCRYPTED: " + encrypted)
         type = USER if chat_type == "USER" else GROUP
-        self.send(Message(text=encrypted), thread_id=uid, thread_type=type)
+        self.send(Message(text=encrypted), thread_id=uid, thread_type=type) 
         return format_message(time.time(), msg)
 
     def onMessage(self, author_id: str, message_object: Message, thread_id: str, thread_type, **kwargs):
