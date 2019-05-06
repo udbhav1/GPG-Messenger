@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "f5e0901d7d92dfab4ca68dfd3cb3e99c30b73deab7ea54af165f00d8430bedd3"
+            "sha256": "b5b8d3d20f2fac3c1f8dc5d9b8bcfbd41ab3c7d2ea7da0c42618bce5a11dd9e3"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -60,6 +60,14 @@
                 "sha256:7a4bd47eaf6596e1295ecb11361139febe29b084a87bf005bf899f9a42edc3c6"
             ],
             "version": "==0.14"
+        },
+        "emoji": {
+            "hashes": [
+                "sha256:9ae01495fc3fcc04e9136ca1af8cae58726ec5dfaaa92f61f0732cbae9a12fa9",
+                "sha256:cecf8ed7cc535c999dc96e3fe7e7aacd176deb9ef62b3ef022c535e155084c44"
+            ],
+            "index": "pypi",
+            "version": "==0.5.2"
         },
         "fbchat": {
             "hashes": [
@@ -132,10 +140,10 @@
         },
         "urllib3": {
             "hashes": [
-                "sha256:4c291ca23bbb55c76518905869ef34bdd5f0e46af7afe6861e8375643ffee1a0",
-                "sha256:9a247273df709c4fedb38c711e44292304f73f39ab01beda9f6b9fc375669ac3"
+                "sha256:2393a695cd12afedd0dcb26fe5d50d0cf248e5a66f75dbd89a3d4eb333a61af4",
+                "sha256:a637e5fae88995b256e3409dc4d52c2e2e0ba32c42a6365fee8bbd2238de3cfb"
             ],
-            "version": "==1.24.2"
+            "version": "==1.24.3"
         }
     },
     "develop": {}

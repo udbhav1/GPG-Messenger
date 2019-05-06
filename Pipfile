@@ -9,6 +9,7 @@ verify_ssl = true
 fbchat = "*"
 python-gnupg = "*"
 kivy = "*"
+emoji = "*"
 
 [requires]
 python_version = "3.7"

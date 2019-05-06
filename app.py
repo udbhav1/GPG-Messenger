@@ -11,6 +11,7 @@ from kivy.factory import Factory
 from kivy.uix.button import Button
 # from kivy.uix.label import Label
 # from kivy.uix.floatlayout import FloatLayout
+import emoji
 import time
 import messenger
 
@@ -271,7 +272,7 @@ class GPG_Messenger(App):
         """
         self.messages.append({
             'message_id': len(self.messages),
-            'text': text,
+            'text': emoji.demojize(text),
             'side': side,
             'bg_color': bg_color,
             'm_color': text_color,
@@ -285,7 +286,7 @@ class GPG_Messenger(App):
         """
         self.recipient_list.append({
             'r_id': len(self.recipient_list),
-            'text': name,
+            'text': emoji.demojize(name),
             'side': 'left',
             'chat_uid': uid,
             'type': "USER" if type == messenger.USER else "GROUP"
