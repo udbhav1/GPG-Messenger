@@ -151,7 +151,7 @@ class GPGClient(fbchat.Client):
         return format_message(time.time(), msg)
 
     def onMessage(self, author_id: str, message_object: Message, thread_id: str, thread_type, **kwargs):
-        """ Recives a message from a given user.
+        """ Receives a message from a given user.
         Uses instance variables to return value.
         """
 

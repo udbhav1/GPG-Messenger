@@ -15,7 +15,7 @@ import time
 import messenger
 
 client = messenger.client
-HISTORY = 10
+HISTORY = 25
 DELAY = 0.1
 
 KV = '''
@@ -191,9 +191,9 @@ class GPG_Messenger(App):
         for thread in client.fetchThreadList():
             self.add_recipient(thread.name if thread.name is not None else "Unnamed", thread.uid, thread.type)
         messenger.make_thread(self.receive)
-        self.intialize()
+        self.initialize()
 
-    def intialize(self):
+    def initialize(self):
         self.messages = []
         #uid_to_name [dict] ([str] -> [str]): fbchat uid mapped to name
         #current_members [list] of [str]: member uids in active chat
@@ -212,7 +212,7 @@ class GPG_Messenger(App):
         """
         Called on press of button in kv - sets variables, clears messages, rebuilds UID to name map, and loads last 50 messages.
         """
-        self.intialize() #reset
+        self.initialize() #reset
 
         self.active_chat_type = chat_type
         self.active_chat_uid = chat_uid
