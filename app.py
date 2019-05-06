@@ -17,6 +17,7 @@ import messenger
 client = messenger.client
 HISTORY = 25
 DELAY = 0.1
+HEADER = "-----BEGIN PGP MESSAGE-----"
 
 KV = '''
 #:import RGBA kivy.utils.rgba
@@ -297,7 +298,15 @@ class GPG_Messenger(App):
         """
 
         #TODO: find out a good name for var1 and var2
-        dir, color, var1, var2 = ("right", "#0078FF", (1,1,1,1), (25,5,5,25)) if author == client.uid else ("left", "#F1F0F0", (0,0,0,1), (5,25,25,5))
+        if author == client.uid:
+            dir, color, var1, var2 = ("right", "#0078FF", (1,1,1,1), (25,5,5,25))
+            if text.split("\n")[0].strip() == HEADER:
+                color = "#0F9D58"
+        else:
+            dir, color, var1, var2 = ("left", "#F1F0F0", (0,0,0,1), (5,25,25,5))
+            if text.split("\n")[0].strip() == HEADER:
+                color = "#8D949E"
+        #dir, color, var1, var2 = ("right", "#0078FF", (1,1,1,1), (25,5,5,25)) if author == client.uid else ("left", "#F1F0F0", (0,0,0,1), (5,25,25,5))
 
         if text is not None and text.strip() != "":
             text = messenger.decrypt_message(text)

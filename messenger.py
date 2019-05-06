@@ -146,6 +146,8 @@ class GPGClient(fbchat.Client):
         returns formatted str of original msg
         """
         encrypted = str(gpg.encrypt(msg, [*fingerprints, keyid])) if fingerprints is not None else msg
+        print(fingerprints)
+        print("ENCRYPTED: " + encrypted)
         type = USER if chat_type == "USER" else GROUP
         self.send(Message(text=encrypted), thread_id=uid, thread_type=type)
         return format_message(time.time(), msg)
