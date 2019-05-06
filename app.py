@@ -9,8 +9,8 @@ from functools import partial
 from kivy.core.window import Window
 from kivy.factory import Factory
 from kivy.uix.button import Button
-from kivy.uix.label import Label
-from kivy.uix.floatlayout import FloatLayout
+# from kivy.uix.label import Label
+# from kivy.uix.floatlayout import FloatLayout
 import time
 import messenger
 
@@ -227,12 +227,9 @@ class GPG_Messenger(App):
 
     def update_keys(self):
         for user_id in self.current_members:
-            if user_id != client.uid:
-                for key in messenger.gpg.list_keys():
-                    for uid in key["uids"]:
-                        name = self.uid_to_name[user_id]
-                        if name.lower() in uid.lower() and not (key["keyid"] in self.gpg_keys):
-                            self.gpg_keys.append(key["keyid"])
+            key = messenger.get_key(self.get_name(user_id))
+            if key is not None:
+                self.gpg_keys.append(key)
 
         if len(self.gpg_keys) < len(self.current_members) - 1:
             #shouldn't encrypt
@@ -246,6 +243,12 @@ class GPG_Messenger(App):
             if i != client.uid:
                 self.uid_to_name[i] = (client.fetchUserInfo(i)[i]).name
 
+    def get_name(self, uid):
+        """
+        Gets the name from an uid, "Unknown" if not in dict
+        """
+        return self.uid_to_name.get(uid, "Unknown")
+
     def load_last(self, chat_uid, chat_type, n=HISTORY, *args):
         """
         Loads last n (default 50) messages.
@@ -257,7 +260,7 @@ class GPG_Messenger(App):
             return
 
         for i in prev:
-            first_name = self.uid_to_name.get(i.author, "Unknown").split(" ")[0]
+            first_name = self.get_name(i.author).split(" ")[0]
             self.render_message(i.author, i.text, first_name)
 
         self.scroll_bottom()
@@ -306,7 +309,6 @@ class GPG_Messenger(App):
         """
         Triggered on enter or clicking the kivy logo - actually sends out message through facebook and calls send_message for the GUI.
         """
-        self.render_message(client.uid, text)
         client.send_message(text, self.active_chat_uid, self.active_chat_type, self.gpg_keys)
 
     def receive(self):
@@ -314,8 +316,8 @@ class GPG_Messenger(App):
             time.sleep(DELAY)
             if client.received:
                 client.received = False
-                if client.thread == self.active_chat_uid and client.author_uid != client.uid:
-                    self.receive_message(client.message.text, self.uid_to_name[client.author_uid])
+                if client.thread == self.active_chat_uid:
+                    self.render_message(client.author_uid, client.message.text, self.get_name(client.author_uid))
 
     def scroll_bottom(self):
         """
@@ -385,7 +387,6 @@ class HoverButton(Button, HoverBehavior):
     def on_leave(self, *args):
         pass
 
-
 Window.clearcolor = (1, 1, 1, 1)
 if __name__ == '__main__':
-    GPG_Messenger().run()
+    GPG_Messenger().run()  # TODO: safe exit

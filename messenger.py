@@ -1,7 +1,6 @@
 import datetime
 import sys, os, pickle, json, time, logging, threading
 import fbchat
-from fbchat import Client
 from fbchat.models import *
 import gnupg
 
@@ -23,27 +22,32 @@ help    Shows this help for commands. """
 
 defaults = {SETTINGS: {"gpg":{"gpgbinary": "gpg", "gnupghome": f"{os.environ['HOME']}/.gnupg/"}, "backend":"facebook", "dev": False},
             "cookie.gpg": {},
+            "keys.pickle": {}
            }
 
 USER, GROUP = ThreadType.USER, ThreadType.GROUP
 
-def actual_time(ts):
+def actual_time(ts) -> str:
     """ Takes in a UNIX timestamp and spits out actual time as a string without microseconds. """
     dt = datetime.datetime.fromtimestamp(float(ts)/1000.0)
     dt = dt.replace(microsecond=0)
     return str(dt)
 
-def format_message(time, msg, author="You "):
+def format_message(time, msg, author="You ") -> str:
+    """ Formats a message with time and author """
     return f"{actual_time(time)} {str(author.split()[0])}: {msg}"
 
-def decrypt_message(msg):
+def decrypt_message(msg: str) -> str:
+    """ Decrypts a GPG encrypted message if it begins with the valid header. """
     return str(gpg.decrypt(msg)) if msg.split("\n")[0].strip() == HEADER else msg
 
-def tty_input(prompt, default):
+def tty_input(prompt: str, default):
+    """ Prompts the user, using the default if the response is empty. """
     ans = input(prompt + f"? Default {default}: ").strip()
     return ans if len(ans) != 0 else default
 
-def setup_global_settings(**kwargs):
+def setup_global_settings(**kwargs) -> None:
+    """ Sets up the settings which apply to every account. """
     prompts = {"gpgbinary": "What is the name/path of your gpg binary", "gnupghome": "Where are your keys stored"}
     for param, default in defaults[SETTINGS]["gpg"].items():
         if param not in kwargs:
@@ -53,7 +57,8 @@ def setup_global_settings(**kwargs):
     with open(SETTINGS, "w") as f:
         json.dump(config, f)
 
-def setup_settings(chat_backend):
+def setup_settings(chat_backend: str) -> None:
+    """ Sets up the settings specific to a certain messenging platform. """
     params = {"username": "What is your username",
                "pass": "What is your password / path to file with your password",
                "2FA": "Is two factor authentication active (y/n)"}
@@ -62,14 +67,16 @@ def setup_settings(chat_backend):
     with open(f"accounts/{chat_backend}/{SETTINGS}", "w") as f:
         json.dump(data, f)
 
-def load_file(fname, func):
+def load_file(fname: str, func, mode: str="r"):
+    """ Attempts to open a file, defaulting to the hardcoded default if file does not exist. """
     try:
-        with open(fname) as f:
+        with open(fname, mode) as f:
             return func(f)
     except FileNotFoundError:
         return defaults[fname]
 
-def get_pass(fname):
+def get_pass(fname: str) -> str:
+    """ Returns the password from a file. """
     try:
         open(fname)
     except FileNotFoundError:
@@ -77,28 +84,57 @@ def get_pass(fname):
 
     return str(gpg.decrypt_file(open(fname, "rb"))).split("\n")[0]
 
-def make_client(tfa=None):
-    if config["2FA"] and tfa is not None: Client.on2FACode = tfa
+def get_key(name: str) -> str:
+    """ Takes in a string as a name and attemps to return the corresponding GPG fingerprint.
+        Returns None if no key is found. """
+    if name in gpg_keys:
+        return gpg_keys[name]
+
+    possible = [key for key in gpg.list_keys() for uid in key["uids"] if name.lower() in uid.lower()]
+    if len(possible) > 0:
+        key = (prompt_user(possible) if len(possible) > 1 else possible[0])["keyid"]
+        gpg_keys[name] = key
+        with open("keys.pickle", "wb") as f:
+            pickle.dump(gpg_keys, f)
+        return key
+
+def pretty_key(key: str) -> str:
+    """ Returns a formatted version of a GPG key. """
+    return f"{key['uids'][0]} ({key['keyid']})"
+
+def prompt_user(keys):
+    """ Asks the user which key they would prefer if there is a conflict. """
+    prompt = "There are multiple keys associated with the same user. \n\t"
+    prompt += "\n\t".join(f"({i + 1}): {pretty_key(key)}" for i, key in enumerate(keys)) + '\nYour selection: '
+    return keys[int(input(prompt)) - 1]
+
+def make_client(tfa=None) -> fbchat.Client:
+    """ Makes the client, as well as updates stored cookie. """
+    if config["2FA"] and tfa is not None: fbchat.Client.on2FACode = tfa
     client = GPGClient(config["username"], get_pass(config["pass"]), session_cookies=cookies)
     with open("cookie.gpg", "w") as f:
         f.write(str(gpg.encrypt(pickle.dumps(client.getSession()), keyid)))
     return client
 
-def make_thread(f):
+def make_thread(f) -> None:
+    """ Makes a thread. """
     thread = threading.Thread(target=f)
     thread.daemon = True
     thread.start()
 
-class GPGClient(Client):
+class GPGClient(fbchat.Client):
+
+    """ Subclass of fbchat.Client. """
 
     def init(self): self.received, self.message, self.thread, self.author_uid = False, None, 0, 0
 
-    def send_message(self, msg, uid, chat_type, fingerprints):
+    def send_message(self, msg: str, uid: int, chat_type: str, fingerprints: list) -> str:
         """ Sends an message over the chat backend, attempts to encrypt so that both
         recipient and author can decrypt, but only encrypts if you have their public key.
 
-        msg [str]: message to be sent
-        uid [int]: facebook id of the user to send to
+        msg: message to be sent
+        uid: facebook id of the user to send to
+        chat_type: type of the chat (can be ThreadType.USER or ThreadType.GROUP)
         fingerprint [array of str]: gpg fingerprints of the recipients (None if does not exist [DNE])
 
         returns formatted str of original msg
@@ -108,7 +144,7 @@ class GPGClient(Client):
         self.send(Message(text=encrypted), thread_id=uid, thread_type=type)
         return format_message(time.time(), msg)
 
-    def onMessage(self, author_id, message_object, thread_id, thread_type, **kwargs):
+    def onMessage(self, author_id: str, message_object: Message, thread_id: str, thread_type, **kwargs):
         """ Recives a message from a given user.
         Uses instance variables to return value.
         """
@@ -138,6 +174,7 @@ keyid = gpg.list_keys(True)[0]['keyid']
 
 config = load_file(f"accounts/{config['backend']}/{SETTINGS}", lambda x: json.load(x))
 cookies = load_file("cookie.gpg", lambda x: pickle.loads(gpg.decrypt(x.read()).data))
+gpg_keys = load_file("keys.pickle", pickle.load, "rb")
 
 client = make_client()
 client.init()
