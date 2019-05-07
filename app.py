@@ -199,8 +199,9 @@ BoxLayout:
             Line:
                 width: 1
                 rectangle: self.x, self.y, self.width, self.height
+        canvas.after:
             Color:
-                rgba: (0, 1, 0, 1) if root.safe else (1, 0, 0, 1)
+                rgba: (0, 0.8, 0, 1) if root.safe else (0.8, 0, 0, 1)
             Line:
                 width: 5
                 rectangle: self.x + self.width/2, self.y - self.height, self.width/2, self.height
