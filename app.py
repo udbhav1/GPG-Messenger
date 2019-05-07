@@ -153,6 +153,7 @@ BoxLayout:
     t_size: {'text_size': (None, None)}
     chat_uid: ""
     type: "USER"
+    safe: 0
     HoverButton:
         text: root.text
         color: root.m_color
@@ -177,6 +178,11 @@ BoxLayout:
             Line:
                 width: 1
                 rectangle: self.x, self.y, self.width, self.height
+            Color:
+                rgba: (0, 1, 0, 1) if root.safe else (1, 0, 0, 1)
+            Line:
+                width: 5
+                rectangle: self.x + self.width/2, self.y - self.height, self.width/2, self.height
 '''
 
 class GPG_Messenger(App):
@@ -189,10 +195,30 @@ class GPG_Messenger(App):
         Obtains the last 20 threads and adds them to the left hand bar.
         """
         super().__init__()
-        for thread in client.fetchThreadList():
-            self.add_recipient(thread.name if thread.name is not None else "Unnamed", thread.uid, thread.type)
-        messenger.make_thread(self.receive)
         self.initialize()
+        print("Loading Client...")
+        for thread in client.fetchThreadList():
+            safe = self.encryption_possible(thread)
+            self.add_recipient(thread.name if thread.name is not None else "Unnamed", thread.uid, thread.type, safe)
+        messenger.make_thread(self.receive)
+
+
+    def encryption_possible(self, thread):
+        """
+        Determines whether a given thread can be encrypted for indications purposes
+        """
+        if thread.type == messenger.USER:
+            if messenger.get_key((client.fetchUserInfo(thread.uid)[thread.uid]).name) == None:
+                return 0
+            return 1
+        p = thread.participants
+        if client.uid in p:
+            p.remove(client.uid)
+        for i in p:
+            name = (client.fetchUserInfo(i)[i]).name
+            if messenger.get_key(name) == None:
+                return 0
+        return 1
 
     def initialize(self):
         self.messages = []
@@ -280,7 +306,7 @@ class GPG_Messenger(App):
             't_size': {'text_size': (t_size, None)}
         })
 
-    def add_recipient(self, name, uid, type):
+    def add_recipient(self, name, uid, type, safe):
         """
         Adds a clickable recipient to the GUI.
         """
@@ -289,7 +315,8 @@ class GPG_Messenger(App):
             'text': emoji.demojize(name),
             'side': 'left',
             'chat_uid': uid,
-            'type': "USER" if type == messenger.USER else "GROUP"
+            'type': "USER" if type == messenger.USER else "GROUP",
+            'safe': safe
         })
 
     def render_message(self, author, text, name=None):
@@ -310,7 +337,8 @@ class GPG_Messenger(App):
         """
         Triggered on enter or clicking the kivy logo - actually sends out message through facebook and calls send_message for the GUI.
         """
-        client.send_message(text, self.active_chat_uid, self.active_chat_type, self.gpg_keys)
+        if text != "":
+            client.send_message(text, self.active_chat_uid, self.active_chat_type, self.gpg_keys)
 
     def receive(self):
         while True:

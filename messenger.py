@@ -150,7 +150,7 @@ class GPGClient(fbchat.Client):
         """
         encrypted = str(gpg.encrypt(msg, [*fingerprints, keyid])) if fingerprints is not None else msg
         type = USER if chat_type == "USER" else GROUP
-        self.send(Message(text=encrypted), thread_id=uid, thread_type=type) 
+        self.send(Message(text=encrypted), thread_id=uid, thread_type=type)
         return format_message(time.time(), msg)
 
     def onMessage(self, author_id: str, message_object: Message, thread_id: str, thread_type, **kwargs):
