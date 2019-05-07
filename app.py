@@ -59,12 +59,33 @@ BoxLayout:
                     radius: 0,0,0,0
     BoxLayout:
         orientation: 'vertical'
+        spacing: 0
         canvas.before:
             Color:
                 rgba: .5, .5, .5, 1
             Line:
                 width: 1
                 rectangle: self.x, self.y, self.width, self.height
+        BoxLayout:
+            orientation: 'horizontal'
+            size_hint: 1, 0.05
+            Widget: #just to take up the first half of the space
+                size_hint_y: 0
+            ActionBar:
+                background_normal: ''
+                background_color: 0.5, 0.5, 0.5, 0.7
+                size_hint: 1, 1
+                pos_hint: {'top':1}
+                id: view_menu_group
+                ActionView:
+                    ActionPrevious:
+                        app_icon: ''
+                        title: 'Encrypt Messages'
+                        with_previous: False
+                    ActionGroup:
+                        ActionCheck:
+                            id: encrypt
+
         RecycleView:
             id: rv
             data: app.messages
@@ -189,7 +210,6 @@ class GPG_Messenger(App):
 
     recipient_list = ListProperty()
     messages = ListProperty()
-
     def __init__(self):
         """
         Obtains the last 20 threads and adds them to the left hand bar.
@@ -201,7 +221,6 @@ class GPG_Messenger(App):
             safe = self.encryption_possible(thread)
             self.add_recipient(thread.name if thread.name is not None else "Unnamed", thread.uid, thread.type, safe)
         messenger.make_thread(self.receive)
-
 
     def encryption_possible(self, thread):
         """
@@ -338,7 +357,10 @@ class GPG_Messenger(App):
         Triggered on enter or clicking the kivy logo - actually sends out message through facebook and calls send_message for the GUI.
         """
         if text != "":
-            client.send_message(text, self.active_chat_uid, self.active_chat_type, self.gpg_keys)
+            if self.root.ids.encrypt.active:
+                client.send_message(text, self.active_chat_uid, self.active_chat_type, self.gpg_keys)
+            else:
+                client.send_message(text, self.active_chat_uid, self.active_chat_type, None)
 
     def receive(self):
         while True:
