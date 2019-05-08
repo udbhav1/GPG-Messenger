@@ -4,6 +4,11 @@ from kivy.clock import Clock
 from kivy.properties import ListProperty
 from kivy.properties import ObjectProperty
 from kivy.properties import BooleanProperty
+
+#TODO remove
+from kivy.uix.scatter import Scatter
+from kivy.properties import StringProperty
+
 from kivy.animation import Animation
 from functools import partial
 from kivy.core.window import Window
@@ -205,7 +210,36 @@ BoxLayout:
             Line:
                 width: 5
                 rectangle: self.x + self.width/2, self.y - self.height, self.width/2, self.height
+
+#TODO: remove
+<Picture>:
+    on_size: self.center = win.Window.center
+    size: image.size
+    size_hint: None, None
+
+    Image:
+        id: image
+        source: root.source
+
+        # create initial image to be 400 pixels width
+        size: 400, 400 / self.image_ratio
+
+        # add shadow background
+        canvas.before:
+            Color:
+                rgba: 1,1,1,1
+            BorderImage:
+                source: 'images/shadow32.png'
+                border: (36,36,36,36)
+                size:(self.width+72, self.height+72)
+                pos: (-36,-36)
 '''
+
+#TODO: remove
+class Picture(Scatter):
+
+    source = StringProperty(None)
+
 
 class GPG_Messenger(App):
 
@@ -224,6 +258,8 @@ class GPG_Messenger(App):
             safe = self.encryption_possible(thread)
             self.add_recipient(thread.name if thread.name is not None else "Unnamed", thread.uid, thread.type, safe)
         messenger.make_thread(self.receive)
+
+        self.picture, self.picture_index = None, 0 #TODO: remove
 
     def encryption_possible(self, thread):
         """
@@ -265,6 +301,7 @@ class GPG_Messenger(App):
 
         self.active_chat_type = chat_type
         self.active_chat_uid = chat_uid
+        client.thread = chat_uid
 
         if chat_type == "GROUP":
             self.current_members = (client.fetchThreadInfo(chat_uid)[chat_uid]).participants
@@ -360,10 +397,14 @@ class GPG_Messenger(App):
         Triggered on enter or clicking the kivy logo - actually sends out message through facebook and calls send_message for the GUI.
         """
         if text != "":
-            if self.root.ids.encrypt.active:
-                client.send_message(text, self.active_chat_uid, self.active_chat_type, self.gpg_keys)
-            else:
-                client.send_message(text, self.active_chat_uid, self.active_chat_type, None)
+            client.send_message(text, self.active_chat_uid, self.active_chat_type, self.gpg_keys if self.root.ids.encrypt.active else None)
+
+        #TODO: remove
+        if self.picture is not None:
+            self.root.remove_widget(self.picture)
+        self.picture = Picture(source="images/" + ["flag.png", "usflag.png"][self.picture_index], rotation=10)
+        self.picture_index = (self.picture_index + 1) % 2
+        self.root.add_widget(self.picture)
 
     def receive(self):
         while True:

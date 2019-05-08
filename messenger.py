@@ -158,10 +158,11 @@ class GPGClient(fbchat.Client):
         Uses instance variables to return value.
         """
 
-        self.markAsDelivered(thread_id, message_object.uid)
-        self.markAsRead(thread_id)
+        if self.thread == thread_id:
+            self.markAsDelivered(thread_id, message_object.uid)
+            self.markAsRead(thread_id)
 
-        self.received, self.message, self.thread, self.author_uid = True, message_object, thread_id, author_id
+            self.received, self.message, self.thread, self.author_uid = True, message_object, thread_id, author_id
 
 config = load_file(SETTINGS, lambda x: json.load(x))
 dev = config["dev"]
