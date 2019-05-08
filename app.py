@@ -85,6 +85,7 @@ BoxLayout:
                     ActionGroup:
                         ActionCheck:
                             id: encrypt
+                            active: app.encrypt
 
         RecycleView:
             id: rv
@@ -199,7 +200,6 @@ BoxLayout:
             Line:
                 width: 1
                 rectangle: self.x, self.y, self.width, self.height
-        canvas.after:
             Color:
                 rgba: (0, 0.8, 0, 1) if root.safe else (0.8, 0, 0, 1)
             Line:
@@ -211,6 +211,8 @@ class GPG_Messenger(App):
 
     recipient_list = ListProperty()
     messages = ListProperty()
+    encrypt = ObjectProperty(True)
+
     def __init__(self):
         """
         Obtains the last 20 threads and adds them to the left hand bar.
