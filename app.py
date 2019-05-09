@@ -4,11 +4,6 @@ from kivy.clock import Clock
 from kivy.properties import ListProperty
 from kivy.properties import ObjectProperty
 from kivy.properties import BooleanProperty
-
-#TODO remove
-from kivy.uix.scatter import Scatter
-from kivy.properties import StringProperty
-
 from kivy.animation import Animation
 from functools import partial
 from kivy.core.window import Window
@@ -144,7 +139,10 @@ BoxLayout:
     _size: 0, 0
     rounding: (25, 10, 10, 25)
     t_size: {'text_size': (None, None)}
+    image_size: 0, 0 #default if no image, else change to the actual dimensions - scale x to up to 400 and y appropriately
+    image_source: ''
     Label:
+        id: messagetext
         text: root.text
         color: root.m_color
         padding: 15, 10
@@ -154,7 +152,7 @@ BoxLayout:
 
         on_texture_size:
             message = dict(app.messages[root.message_id])
-            message['_size'] = self.texture_size
+            message['_size'] = [self.texture_size[0], self.texture_size[1] + root.ids.image.size[1]]
             app.messages[root.message_id] = message
         pos_hint:
             (
@@ -169,6 +167,21 @@ BoxLayout:
                 size: self.size
                 pos: self.pos
                 radius: root.rounding
+    Image:
+        id: image
+        source: root.image_source
+        pos_hint:
+            (
+            {'x': 0}
+            if root.side == 'left' else
+            {'right': 1}
+            )
+        size_hint: None, None
+        allow_stretch: False
+        keep_ratio: True
+        y: root.y - root.image_size[1]/2 # remove the /2 if the image is covering up the message
+        size: root.image_size
+
 <Recipient@FloatLayout>:
     r_id: -1
     bg_color: (0.847, 0.847, 0.847, 1)
@@ -210,36 +223,7 @@ BoxLayout:
             Line:
                 width: 5
                 rectangle: self.x + self.width/2, self.y - self.height, self.width/2, self.height
-
-#TODO: remove
-<Picture>:
-    on_size: self.center = win.Window.center
-    size: image.size
-    size_hint: None, None
-
-    Image:
-        id: image
-        source: root.source
-
-        # create initial image to be 400 pixels width
-        size: 400, 400 / self.image_ratio
-
-        # add shadow background
-        canvas.before:
-            Color:
-                rgba: 1,1,1,1
-            BorderImage:
-                source: 'images/shadow32.png'
-                border: (36,36,36,36)
-                size:(self.width+72, self.height+72)
-                pos: (-36,-36)
 '''
-
-#TODO: remove
-class Picture(Scatter):
-
-    source = StringProperty(None)
-
 
 class GPG_Messenger(App):
 
@@ -258,8 +242,6 @@ class GPG_Messenger(App):
             safe = self.encryption_possible(thread)
             self.add_recipient(thread.name if thread.name is not None else "Unnamed", thread.uid, thread.type, safe)
         messenger.make_thread(self.receive)
-
-        self.picture, self.picture_index = None, 0 #TODO: remove
 
     def encryption_possible(self, thread):
         """
@@ -398,13 +380,6 @@ class GPG_Messenger(App):
         """
         if text != "":
             client.send_message(text, self.active_chat_uid, self.active_chat_type, self.gpg_keys if self.root.ids.encrypt.active else None)
-
-        #TODO: remove
-        if self.picture is not None:
-            self.root.remove_widget(self.picture)
-        self.picture = Picture(source="images/" + ["flag.png", "usflag.png"][self.picture_index], rotation=10)
-        self.picture_index = (self.picture_index + 1) % 2
-        self.root.add_widget(self.picture)
 
     def receive(self):
         while True:
