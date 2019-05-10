@@ -240,25 +240,16 @@ class GPG_Messenger(App):
         print("Loading Client...")
         for thread in client.fetchThreadList():
             safe = self.encryption_possible(thread)
-            self.add_recipient(thread.name if thread.name is not None else "Unnamed", thread.uid, thread.type, safe)
+            self.add_recipient(thread.name, thread.uid, thread.type, safe)
         messenger.make_thread(self.receive)
 
     def encryption_possible(self, thread):
         """
         Determines whether a given thread can be encrypted for indications purposes
         """
-        if thread.type == messenger.USER:
-            if messenger.get_key((client.fetchUserInfo(thread.uid)[thread.uid]).name) == None:
-                return 0
-            return 1
-        p = thread.participants
-        if client.uid in p:
-            p.remove(client.uid)
-        for i in p:
-            name = (client.fetchUserInfo(i)[i]).name
-            if messenger.get_key(name) == None:
-                return 0
-        return 1
+        if not isinstance(thread, str) and thread.type == messenger.GROUP:
+            return int(all(map(self.encryption_possible, thread.participants)))
+        return int(messenger.get_key((self.uid_to_obj(thread) if isinstance(thread, str) else thread).name) is not None)
 
     def initialize(self):
         self.messages = []
@@ -286,7 +277,7 @@ class GPG_Messenger(App):
         client.thread = chat_uid
 
         if chat_type == "GROUP":
-            self.current_members = (client.fetchThreadInfo(chat_uid)[chat_uid]).participants
+            self.current_members = self.uid_to_obj(chat_uid).participants
         else:
             self.current_members = {client.uid, chat_uid}
         self.update_uid_to_name()
@@ -309,7 +300,15 @@ class GPG_Messenger(App):
         """
         for i in self.current_members:
             if i != client.uid:
-                self.uid_to_name[i] = (client.fetchUserInfo(i)[i]).name
+                self.uid_to_name[i] = self.uid_to_obj(i).name
+
+    def uid_to_obj(self, uid, type="USER"):
+        """
+        Gets the thread/user object from a uid.
+        """
+        if type == "USER":
+            return client.fetchUserInfo(uid)[uid]
+        return client.fetchThreadInfo(uid)[uid]
 
     def get_name(self, uid):
         """

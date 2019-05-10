@@ -1,5 +1,5 @@
 import datetime
-import sys, os, pickle, json, time, logging, threading
+import sys, os, pickle, json, time, logging, threading, argparse
 import fbchat
 from fbchat.models import *
 import gnupg
@@ -11,65 +11,17 @@ import gnupg
 
 HEADER = "-----BEGIN PGP MESSAGE-----"
 SETTINGS = "config.json"
-HELPSTR = """GPG-Messenger v1
+USER, GROUP = ThreadType.USER, ThreadType.GROUP
 
-Usage:
-messenger [options] <command>
+def get_path(chat_backend: str) -> str:
+    """ Returns the path to a config file. """
+    return SETTINGS if chat_backend == "global" else f"accounts/{chat_backend}/{SETTINGS}"
 
-Commands:
-global  Edits the top-level settings
-help    Shows this help for commands. """
-
-defaults = {SETTINGS: {"gpg":{"gpgbinary": "gpg", "gnupghome": f"{os.environ['HOME']}/.gnupg/"}, "backend":"facebook", "dev": False},
+defaults = {get_path("global"): {"gpg": {"gpgbinary": "gpg", "gnupghome": f"{os.environ['HOME']}/.gnupg/"}, "backend": "facebook", "dev": False},
+            get_path("facebook"): {"username": "", "pass": "", "2FA": False},
             "cookie.gpg": {},
             "keys.pickle": {}
            }
-
-USER, GROUP = ThreadType.USER, ThreadType.GROUP
-
-def actual_time(ts) -> str:
-    """ Takes in a UNIX timestamp and spits out actual time as a string without microseconds. """
-    dt = datetime.datetime.fromtimestamp(float(ts)/1000.0)
-    dt = dt.replace(microsecond=0)
-    return str(dt)
-
-def is_encrypted(s: str) -> bool:
-    """ Returns whether a string is encrypted or not """
-    return s.split("\n")[0].strip() == HEADER
-
-def format_message(time, msg, author="You ") -> str:
-    """ Formats a message with time and author """
-    return f"{actual_time(time)} {str(author.split()[0])}: {msg}"
-
-def decrypt_message(msg: str) -> str:
-    """ Decrypts a GPG encrypted message if it begins with the valid header. """
-    return str(gpg.decrypt(msg)) if msg.split("\n")[0].strip() == HEADER else msg
-
-def tty_input(prompt: str, default):
-    """ Prompts the user, using the default if the response is empty. """
-    ans = input(prompt + f"? Default {default}: ").strip()
-    return ans if len(ans) != 0 else default
-
-def setup_global_settings(**kwargs) -> None:
-    """ Sets up the settings which apply to every account. """
-    prompts = {"gpgbinary": "What is the name/path of your gpg binary", "gnupghome": "Where are your keys stored"}
-    for param, default in defaults[SETTINGS]["gpg"].items():
-        if param not in kwargs:
-            kwargs[param] = tty_input(prompts[param], default)
-    config = defaults[SETTINGS].copy()
-    config["gpg"] = kwargs
-    with open(SETTINGS, "w") as f:
-        json.dump(config, f)
-
-def setup_settings(chat_backend: str) -> None:
-    """ Sets up the settings specific to a certain messenging platform. """
-    params = {"username": "What is your username",
-               "pass": "What is your password / path to file with your password",
-               "2FA": "Is two factor authentication active (y/n)"}
-    data = {param: input(params[param] + "? ").strip() for param in params}
-    data["2FA"] = "y" in data['2FA'].lower()
-    with open(f"accounts/{chat_backend}/{SETTINGS}", "w") as f:
-        json.dump(data, f)
 
 def load_file(fname: str, func, mode: str="r"):
     """ Attempts to open a file, defaulting to the hardcoded default if file does not exist. """
@@ -79,6 +31,51 @@ def load_file(fname: str, func, mode: str="r"):
     except FileNotFoundError:
         return defaults[fname]
 
+def tty_input(prompt: str, default):
+    """ Prompts the user, using the default if the response is empty. """
+    if isinstance(default, bool):
+        return "y" in input(prompt + "? (y/n) ").strip().lower()
+
+    suffix = f"Default {default}: " if default else ""
+    ans = input(prompt + "? " + suffix).strip()
+    return type(default)(ans) if len(ans) != 0 else default
+
+def flatten_json(d, new={}):
+    """ Flattens a nested dictionary """
+    for k, v in d.items():
+        if isinstance(v, dict):
+            flatten_json(v, new)
+        else:
+            new[k] = v
+    return new
+
+def round_json(d, new, rtn={}):
+    """ Replaces values in a nested dictionary from a flattened dictionary"""
+    for k, v in d.items():
+        if isinstance(v, dict):
+            rtn[k] = round_json(v, new, {})
+        else:
+            rtn[k] = new[k]
+    return rtn
+
+def setup_settings(chat_backend: str) -> None:
+    """ Sets up the settings which apply to every account or those specific to a certain messenging platform. """
+
+    path = get_path(chat_backend)
+    prompts = {"global": {"gpgbinary": "What is the path to your gpg binary",
+                          "gnupghome": "Where are your keys stored",
+                          "backend": "Which messenging platform to use",
+                          "dev": "Development mode"},
+               "facebook": {"username": "What is your username",
+                            "pass": "What is your password / path to file with your password",
+                            "2FA": "Is two factor authentication active"}
+              }
+
+    data = round_json(defaults[path], {param: tty_input(prompts[chat_backend][param], default) for param, default in flatten_json(defaults[path]).items()})
+    
+    with open(path, "w") as f:
+        json.dump(data, f)
+
 def get_pass(fname: str) -> str:
     """ Returns the password from a file. """
     try:
@@ -87,6 +84,16 @@ def get_pass(fname: str) -> str:
         return fname
 
     return str(gpg.decrypt_file(open(fname, "rb"))).split("\n")[0]
+
+def prompt_user(keys):
+    """ Asks the user which key they would prefer if there is a conflict. """
+    prompt = "There are multiple keys associated with the same user. \n\t"
+    prompt += "\n\t".join(f"({i + 1}): {pretty_key(key)}" for i, key in enumerate(keys)) + '\nYour selection: '
+    return keys[int(input(prompt)) - 1]
+
+def pretty_key(key: str) -> str:
+    """ Returns a formatted version of a GPG key. """
+    return f"{key['uids'][0]} ({key['keyid']})"
 
 def get_key(name: str) -> str:
     """ Takes in a string as a name and attemps to return the corresponding GPG fingerprint.
@@ -107,15 +114,23 @@ def get_key(name: str) -> str:
             pickle.dump(gpg_keys, f)
         return key
 
-def pretty_key(key: str) -> str:
-    """ Returns a formatted version of a GPG key. """
-    return f"{key['uids'][0]} ({key['keyid']})"
+def is_encrypted(s: str) -> bool:
+    """ Returns whether a string is encrypted or not """
+    return s.split("\n")[0].strip() == HEADER
 
-def prompt_user(keys):
-    """ Asks the user which key they would prefer if there is a conflict. """
-    prompt = "There are multiple keys associated with the same user. \n\t"
-    prompt += "\n\t".join(f"({i + 1}): {pretty_key(key)}" for i, key in enumerate(keys)) + '\nYour selection: '
-    return keys[int(input(prompt)) - 1]
+def decrypt_message(msg: str) -> str:
+    """ Decrypts a GPG encrypted message if it begins with the valid header. """
+    return str(gpg.decrypt(msg)) if msg.split("\n")[0].strip() == HEADER else msg
+
+def actual_time(ts) -> str:
+    """ Takes in a UNIX timestamp and spits out actual time as a string without microseconds. """
+    dt = datetime.datetime.fromtimestamp(float(ts)/1000.0)
+    dt = dt.replace(microsecond=0)
+    return str(dt)
+
+def format_message(time, msg, author="You ") -> str:
+    """ Formats a message with time and author """
+    return f"{actual_time(time)} {str(author.split()[0])}: {msg}"
 
 def make_client(tfa=None) -> fbchat.Client:
     """ Makes the client, as well as updates stored cookie. """
@@ -168,21 +183,24 @@ config = load_file(SETTINGS, lambda x: json.load(x))
 dev = config["dev"]
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        com = sys.argv[1]
-        if "help" in com:
-            print(HELPSTR)
-        elif com == "global":
-            setup_global_settings()
-        elif com in ["facebook"]:
-            setup_settings(com)
+    parser = argparse.ArgumentParser(description='Uses GPG to encrypt messages.')
+    parser.add_argument('-v', '--version', action='version', version='GPG-Messenger 1.0')
+
+    subparsers = parser.add_subparsers(title="commands")
+    parser_edit = subparsers.add_parser('edit', help="edits the settings")
+    parser_edit.add_argument("setting", help="specifies which level of settings to edit. Either global or facebook.")
+    parser_edit.set_defaults(func=lambda args: setup_settings(args.setting))
+
+    args = parser.parse_args()
+    args.func(args)
+
     if not dev:
         sys.exit()
 
 gpg = gnupg.GPG(**config["gpg"])
 keyid = gpg.list_keys(True)[0]['keyid']
 
-config = load_file(f"accounts/{config['backend']}/{SETTINGS}", lambda x: json.load(x))
+config = load_file(get_path(config['backend']), lambda x: json.load(x))
 cookies = load_file("cookie.gpg", lambda x: pickle.loads(gpg.decrypt(x.read()).data))
 gpg_keys = load_file("keys.pickle", pickle.load, "rb")
 
