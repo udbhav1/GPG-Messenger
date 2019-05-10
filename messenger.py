@@ -123,13 +123,24 @@ def decrypt_message(msg: str) -> str:
     """ Decrypts a GPG encrypted message if it begins with the valid header. """
     return str(gpg.decrypt(msg)) if msg.split("\n")[0].strip() == HEADER else msg
 
-def get_image(uid: str) -> tuple:
-    """ Returns the (size, path) tuple of an image, if it exists. """
-    for img in os.listdir("images/"):
-        if uid in img:
-            width, height = img[img.index("(") + 1:img.index(")")].split("x")
-            return ((int(width), int(height)), f"images/{img}")
-    return ((0, 0), "")
+def write_img_disk(message_object):
+    imgs = [((0, 0), "")]
+    for file in message_object.attachments:
+        if isinstance(file, ImageAttachment):
+            img_data = requests.get(client.fetchImageUrl(file.uid)).content
+            path = f"images/{message_object.uid}({file.preview_width}x{file.preview_height}).{file.original_extension}"
+            with open(path, 'wb') as f:
+                f.write(img_data)
+            imgs.append(((file.preview_width, file.preview_height), path))
+    return imgs
+
+# def get_image(uid: str) -> tuple:
+#     """ Returns the (size, path) tuple of an image, if it exists. """
+#     for img in os.listdir("images/"):
+#         if uid in img:
+#             width, height = img[img.index("(") + 1:img.index(")")].split("x")
+#             return ((int(width), int(height)), f"images/{img}")
+#     return ((0, 0), "")
 
 def scale_image(size, xmax):
     x, y = size
@@ -190,12 +201,6 @@ class GPGClient(fbchat.Client):
         if self.thread == thread_id:
             self.markAsDelivered(thread_id, message_object.uid)
             self.markAsRead(thread_id)
-
-            for file in message_object.attachments:
-                if isinstance(file, ImageAttachment):
-                    img_data = requests.get(self.fetchImageUrl(file.uid)).content
-                    with open(f"images/{message_object.uid}({file.preview_width}x{file.preview_height}).{file.original_extension}", 'wb') as f:
-                        f.write(img_data)
 
             self.received, self.message, self.thread, self.author_uid = True, message_object, thread_id, author_id
 

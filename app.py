@@ -375,7 +375,8 @@ class GPG_Messenger(App):
             wrap = 760 if len(text.strip()) > 50 else None
             msg = f"{name}: {text}" if self.active_chat_type == "GROUP" and author != client.uid else text
 
-        image_size, image_source = messenger.get_image(message.uid)
+        imgs = messenger.write_img_disk(message)
+        image_size, image_source = imgs[-1]
         if image_source != "":
             msg, wrap = "", None
             image_size = messenger.scale_image(image_size, 400)
