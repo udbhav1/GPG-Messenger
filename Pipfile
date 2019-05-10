@@ -10,6 +10,7 @@ fbchat = "*"
 python-gnupg = "*"
 kivy = "*"
 emoji = "*"
+requests = "*"
 
 [requires]
 python_version = "3.7"

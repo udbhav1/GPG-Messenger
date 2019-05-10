@@ -328,11 +328,11 @@ class GPG_Messenger(App):
 
         for i in prev:
             first_name = self.get_name(i.author).split(" ")[0]
-            self.render_message(i.author, i.text, first_name)
+            self.render_message(i.author, i, first_name)
 
         self.scroll_bottom()
 
-    def add_message(self, text, side, bg_color, text_color, rounding, t_size):
+    def add_message(self, text, side, bg_color, text_color, rounding, t_size, image_size, image_source):
         """
         Adds a message to the GUI.
         """
@@ -343,7 +343,9 @@ class GPG_Messenger(App):
             'bg_color': bg_color,
             'm_color': text_color,
             'rounding': rounding,
-            't_size': {'text_size': (t_size, None)}
+            't_size': {'text_size': (t_size, None)},
+            'image_size': image_size,
+            'image_source': image_source
         })
 
     def add_recipient(self, name, uid, type, safe):
@@ -359,19 +361,27 @@ class GPG_Messenger(App):
             'safe': safe
         })
 
-    def render_message(self, author, text, name=None):
+    def render_message(self, author, message, name=None):
         """
         Wraps text and calls add_message.
         """
 
-        dir, color, text_color, rounding = ("right", "#0078FF", (1,1,1,1), (25,5,5,25)) if author == client.uid else ("left", "#F1F0F0", (0,0,0,1), (5,25,25,5))
-        color =  ("#0F9D58" if author == client.uid else "#8D949E") if messenger.is_encrypted(text) else color
+        text, msg = message.text, None
 
+        dir, color, text_color, rounding = ("right", "#0078FF", (1,1,1,1), (25,5,5,25)) if author == client.uid else ("left", "#F1F0F0", (0,0,0,1), (5,25,25,5))
         if text is not None and text.strip() != "":
+            color = ("#0F9D58" if author == client.uid else "#8D949E") if messenger.is_encrypted(text) else color
             text = messenger.decrypt_message(text)
             wrap = 760 if len(text.strip()) > 50 else None
             msg = f"{name}: {text}" if self.active_chat_type == "GROUP" and author != client.uid else text
-            self.add_message(msg, dir, color, text_color, rounding, wrap) #TODO: render emojis properly
+
+        image_size, image_source = messenger.get_image(message.uid)
+        if image_source != "":
+            msg, wrap = "", None
+            image_size = messenger.scale_image(image_size, 400)
+
+        if msg is not None:
+            self.add_message(msg, dir, color, text_color, rounding, wrap, image_size, image_source) #TODO: render emojis properly
 
     def send_out(self, text):
         """
@@ -385,8 +395,7 @@ class GPG_Messenger(App):
             time.sleep(DELAY)
             if client.received:
                 client.received = False
-                if client.thread == self.active_chat_uid:
-                    self.render_message(client.author_uid, client.message.text, self.get_name(client.author_uid))
+                self.render_message(client.author_uid, client.message, self.get_name(client.author_uid))
 
     def scroll_bottom(self):
         """

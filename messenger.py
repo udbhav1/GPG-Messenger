@@ -2,6 +2,7 @@ import datetime
 import sys, os, pickle, json, time, logging, threading, argparse
 import fbchat
 from fbchat.models import *
+import requests
 import gnupg
 
 #By Stephen Huan, Udbhav Muthakana
@@ -41,7 +42,7 @@ def tty_input(prompt: str, default):
     return type(default)(ans) if len(ans) != 0 else default
 
 def flatten_json(d, new={}):
-    """ Flattens a nested dictionary """
+    """ Flattens a nested dictionary. """
     for k, v in d.items():
         if isinstance(v, dict):
             flatten_json(v, new)
@@ -50,7 +51,7 @@ def flatten_json(d, new={}):
     return new
 
 def round_json(d, new, rtn={}):
-    """ Replaces values in a nested dictionary from a flattened dictionary"""
+    """ Replaces values in a nested dictionary from a flattened dictionary. """
     for k, v in d.items():
         if isinstance(v, dict):
             rtn[k] = round_json(v, new, {})
@@ -72,7 +73,7 @@ def setup_settings(chat_backend: str) -> None:
               }
 
     data = round_json(defaults[path], {param: tty_input(prompts[chat_backend][param], default) for param, default in flatten_json(defaults[path]).items()})
-    
+
     with open(path, "w") as f:
         json.dump(data, f)
 
@@ -115,12 +116,25 @@ def get_key(name: str) -> str:
         return key
 
 def is_encrypted(s: str) -> bool:
-    """ Returns whether a string is encrypted or not """
+    """ Returns whether a string is encrypted or not. """
     return s.split("\n")[0].strip() == HEADER
 
 def decrypt_message(msg: str) -> str:
     """ Decrypts a GPG encrypted message if it begins with the valid header. """
     return str(gpg.decrypt(msg)) if msg.split("\n")[0].strip() == HEADER else msg
+
+def get_image(uid: str) -> tuple:
+    """ Returns the (size, path) tuple of an image, if it exists. """
+    for img in os.listdir("images/"):
+        if uid in img:
+            width, height = img[img.index("(") + 1:img.index(")")].split("x")
+            return ((int(width), int(height)), f"images/{img}")
+    return ((0, 0), "")
+
+def scale_image(size, xmax):
+    x, y = size
+    c = min(xmax/x, 1)
+    return (c*x, c*y)
 
 def actual_time(ts) -> str:
     """ Takes in a UNIX timestamp and spits out actual time as a string without microseconds. """
@@ -176,6 +190,12 @@ class GPGClient(fbchat.Client):
         if self.thread == thread_id:
             self.markAsDelivered(thread_id, message_object.uid)
             self.markAsRead(thread_id)
+
+            for file in message_object.attachments:
+                if isinstance(file, ImageAttachment):
+                    img_data = requests.get(self.fetchImageUrl(file.uid)).content
+                    with open(f"images/{message_object.uid}({file.preview_width}x{file.preview_height}).{file.original_extension}", 'wb') as f:
+                        f.write(img_data)
 
             self.received, self.message, self.thread, self.author_uid = True, message_object, thread_id, author_id
 

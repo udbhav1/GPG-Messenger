@@ -4,3 +4,4 @@ cookie.gpg
 stdout.log
 __pycache__
 *.pickle
+mid.*
