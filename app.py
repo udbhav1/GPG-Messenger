@@ -1,3 +1,12 @@
+import time, os, functools
+import messenger
+
+if not messenger.global_config["dev"]:
+    os.environ["KIVY_NO_CONSOLELOG"] = "1"
+
+from kivy.config import Config
+Config.read("config.ini") #use custom config
+
 from kivy.app import App
 from kivy.lang import Builder
 from kivy.clock import Clock
@@ -5,19 +14,15 @@ from kivy.properties import ListProperty
 from kivy.properties import ObjectProperty
 from kivy.properties import BooleanProperty
 from kivy.animation import Animation
-from functools import partial
 from kivy.core.window import Window
 from kivy.factory import Factory
 from kivy.uix.button import Button
+
 # from kivy.uix.label import Label
 # from kivy.uix.floatlayout import FloatLayout
 import emoji
-import time
-import messenger
 
 client = messenger.client
-HISTORY = 25
-DELAY = 0.1
 
 KV = '''
 #:import RGBA kivy.utils.rgba
@@ -316,7 +321,7 @@ class GPG_Messenger(App):
         """
         return self.uid_to_name.get(uid, "Unknown")
 
-    def load_last(self, chat_uid, chat_type, n=HISTORY, *args):
+    def load_last(self, chat_uid, chat_type, n=messenger.config["history"], *args):
         """
         Loads last n (default 50) messages.
         """
@@ -375,10 +380,13 @@ class GPG_Messenger(App):
             wrap = 760 if len(text.strip()) > 50 else None
             msg = f"{name}: {text}" if self.active_chat_type == "GROUP" and author != client.uid else text
 
-        imgs = messenger.write_img_disk(message)
-        image_size, image_source = imgs[-1]
+        image_size, image_source = messenger.get_image(message.uid)
+        if image_source == "":
+            imgs = messenger.write_img_disk(message)
+            image_size, image_source = imgs[-1]
         if image_source != "":
-            msg, wrap = "", None
+            if msg is None:
+                msg, wrap = "", None
             image_size = messenger.scale_image(image_size, 400)
 
         if msg is not None:
@@ -393,7 +401,7 @@ class GPG_Messenger(App):
 
     def receive(self):
         while True:
-            time.sleep(DELAY)
+            time.sleep(messenger.config["delay"])
             if client.received:
                 client.received = False
                 self.render_message(client.author_uid, client.message, self.get_name(client.author_uid))
@@ -409,7 +417,7 @@ class GPG_Messenger(App):
         """
         Used for text entry box - needs to schedule or it won't work.
         """
-        Clock.schedule_once(partial(self.refocus, obj), 0.05)
+        Clock.schedule_once(functools.partial(self.refocus, obj), 0.05)
 
     def refocus(self, obj, *args):
         obj.focus = True
@@ -468,4 +476,10 @@ class HoverButton(Button, HoverBehavior):
 
 Window.clearcolor = (1, 1, 1, 1)
 if __name__ == '__main__':
-    GPG_Messenger().run()  # TODO: safe exit
+    try:
+        GPG_Messenger().run()
+    except KeyboardInterrupt:
+        pass
+
+    print("Clearing image cache...")
+    messenger.remove_images()

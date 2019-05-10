@@ -12,14 +12,15 @@ import gnupg
 
 HEADER = "-----BEGIN PGP MESSAGE-----"
 SETTINGS = "config.json"
+IMAGES = "images/"
 USER, GROUP = ThreadType.USER, ThreadType.GROUP
 
 def get_path(chat_backend: str) -> str:
     """ Returns the path to a config file. """
     return SETTINGS if chat_backend == "global" else f"accounts/{chat_backend}/{SETTINGS}"
 
-defaults = {get_path("global"): {"gpg": {"gpgbinary": "gpg", "gnupghome": f"{os.environ['HOME']}/.gnupg/"}, "backend": "facebook", "dev": False},
-            get_path("facebook"): {"username": "", "pass": "", "2FA": False},
+defaults = {get_path("global"): {"gpg": {"gpgbinary": "gpg", "gnupghome": f"{os.environ['HOME']}/.gnupg/"}, "backend": "facebook", "dev": False, "images": 10},
+            get_path("facebook"): {"username": "", "pass": "", "2FA": False, "history": 25, "delay": 0.1},
             "cookie.gpg": {},
             "keys.pickle": {}
            }
@@ -66,10 +67,14 @@ def setup_settings(chat_backend: str) -> None:
     prompts = {"global": {"gpgbinary": "What is the path to your gpg binary",
                           "gnupghome": "Where are your keys stored",
                           "backend": "Which messenging platform to use",
-                          "dev": "Development mode"},
+                          "dev": "Development mode",
+                          "images": "Maximum number of images stored in the image cache"},
                "facebook": {"username": "What is your username",
                             "pass": "What is your password / path to file with your password",
-                            "2FA": "Is two factor authentication active"}
+                            "2FA": "Is two factor authentication active",
+                            "history": "How many messages to get",
+                            "delay": "Time between refresh"
+                            }
               }
 
     data = round_json(defaults[path], {param: tty_input(prompts[chat_backend][param], default) for param, default in flatten_json(defaults[path]).items()})
@@ -123,24 +128,31 @@ def decrypt_message(msg: str) -> str:
     """ Decrypts a GPG encrypted message if it begins with the valid header. """
     return str(gpg.decrypt(msg)) if msg.split("\n")[0].strip() == HEADER else msg
 
-def write_img_disk(message_object):
+def write_img_disk(message_object: Message) -> list:
+    """ Returns a list of (size, path) tuples for each image attached to the message. """
     imgs = [((0, 0), "")]
     for file in message_object.attachments:
         if isinstance(file, ImageAttachment):
             img_data = requests.get(client.fetchImageUrl(file.uid)).content
-            path = f"images/{message_object.uid}({file.preview_width}x{file.preview_height}).{file.original_extension}"
+            path = f"{IMAGES}|{message_object.uid}|{file.preview_width}x{file.preview_height}|{time.time()}|.{file.original_extension}"
             with open(path, 'wb') as f:
                 f.write(img_data)
             imgs.append(((file.preview_width, file.preview_height), path))
     return imgs
 
-# def get_image(uid: str) -> tuple:
-#     """ Returns the (size, path) tuple of an image, if it exists. """
-#     for img in os.listdir("images/"):
-#         if uid in img:
-#             width, height = img[img.index("(") + 1:img.index(")")].split("x")
-#             return ((int(width), int(height)), f"images/{img}")
-#     return ((0, 0), "")
+def remove_images() -> None:
+    """ Removes enough images to make the size of the cache k. """
+    imgs = sorted([(img.split("|")[3], img) for img in os.listdir(IMAGES)])
+    for i in range(len(imgs) - global_config["images"]):
+        os.remove(IMAGES + imgs[i][1])
+
+def get_image(uid: str) -> tuple:
+    """ Returns the (size, path) tuple of an image, if it exists. """
+    for img in os.listdir(IMAGES):
+        if uid in img:
+            width, height = img.split("|")[2].split("x")
+            return ((int(width), int(height)), IMAGES + img)
+    return ((0, 0), "")
 
 def scale_image(size, xmax):
     x, y = size
@@ -204,8 +216,8 @@ class GPGClient(fbchat.Client):
 
             self.received, self.message, self.thread, self.author_uid = True, message_object, thread_id, author_id
 
-config = load_file(SETTINGS, lambda x: json.load(x))
-dev = config["dev"]
+global_config = load_file(SETTINGS, lambda x: json.load(x))
+dev = global_config["dev"]
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Uses GPG to encrypt messages.')
@@ -222,10 +234,10 @@ if __name__ == "__main__":
     if not dev:
         sys.exit()
 
-gpg = gnupg.GPG(**config["gpg"])
+gpg = gnupg.GPG(**global_config["gpg"])
 keyid = gpg.list_keys(True)[0]['keyid']
 
-config = load_file(get_path(config['backend']), lambda x: json.load(x))
+config = load_file(get_path(global_config['backend']), lambda x: json.load(x))
 cookies = load_file("cookie.gpg", lambda x: pickle.loads(gpg.decrypt(x.read()).data))
 gpg_keys = load_file("keys.pickle", pickle.load, "rb")
 
