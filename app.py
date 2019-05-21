@@ -112,6 +112,7 @@ BoxLayout:
                 size_hint_y: None
                 height: self.texture_size[1]
                 opacity: 0 if not self.height else 1
+                padding_y: 2
                 text: 'go to last message' if rv.height < box.height and rv.scroll_y > 0 else ''
                 pos_hint: {'pos': (0, 0)}
                 on_release: app.scroll_bottom()
@@ -223,11 +224,12 @@ BoxLayout:
             Line:
                 width: 1
                 rectangle: self.x, self.y, self.width, self.height
+        canvas.after:
             Color:
                 rgba: (0, 0.8, 0, 1) if root.safe else (0.8, 0, 0, 1)
             Line:
-                width: 5
-                rectangle: self.x + self.width/2, self.y - self.height, self.width/2, self.height
+                width: 1
+                rectangle: self.x + self.width/2, self.y - 1, self.width/2, 1
 '''
 
 class GPG_Messenger(App):
@@ -282,7 +284,7 @@ class GPG_Messenger(App):
         client.thread = chat_uid
 
         if chat_type == "GROUP":
-            self.current_members = self.uid_to_obj(chat_uid).participants
+            self.current_members = self.uid_to_obj(chat_uid, "GROUP").participants
         else:
             self.current_members = {client.uid, chat_uid}
         self.update_uid_to_name()
@@ -359,7 +361,7 @@ class GPG_Messenger(App):
         """
         self.recipient_list.append({
             'r_id': len(self.recipient_list),
-            'text': emoji.demojize(name),
+            'text': emoji.demojize(name) if name != None else "Unnamed",
             'side': 'left',
             'chat_uid': uid,
             'type': "USER" if type == messenger.USER else "GROUP",
@@ -480,6 +482,5 @@ if __name__ == '__main__':
         GPG_Messenger().run()
     except KeyboardInterrupt:
         pass
-
     print("Clearing image cache...")
     messenger.remove_images()
