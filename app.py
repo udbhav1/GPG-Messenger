@@ -373,38 +373,44 @@ class GPG_Messenger(App):
         Wraps text and calls add_message.
         """
 
-        text, msg = message.text, None
+        message_object = not isinstance(message, str)
+        text, msg = (message.text, None) if message_object else (message, None)
+        encrypted = messenger.is_encrypted(text) if message_object else self.root.ids.encrypt.active
 
         dir, color, text_color, rounding = ("right", "#0078FF", (1,1,1,1), (25,5,5,25)) if author == client.uid else ("left", "#F1F0F0", (0,0,0,1), (5,25,25,5))
         if text is not None and text.strip() != "":
-            color = ("#0F9D58" if author == client.uid else "#8D949E") if messenger.is_encrypted(text) else color
+            color = ("#0F9D58" if author == client.uid else "#8D949E") if encrypted else color
             text = messenger.decrypt_message(text)
             wrap = 760 if len(text.strip()) > 50 else None
             msg = f"{name}: {text}" if self.active_chat_type == "GROUP" and author != client.uid else text
 
-        image_size, image_source = messenger.get_image(message.uid)
-        if image_source == "":
-            imgs = messenger.write_img_disk(message)
-            image_size, image_source = imgs[-1]
-        if image_source != "":
-            if msg is None:
-                msg, wrap = "", None
-            image_size = messenger.scale_image(image_size, 400)
+        image_size, image_source = (0, 0), ""
+        if message_object:
+            image_size, image_source = messenger.get_image(message.uid)
+            if image_source == "":
+                imgs = messenger.write_img_disk(message)
+                image_size, image_source = imgs[-1]
+            if image_source != "":
+                if msg is None:
+                    msg, wrap = "", None
+                image_size = messenger.scale_image(image_size, 400)
 
         if msg is not None:
-            self.add_message(msg, dir, color, text_color, rounding, wrap, image_size, image_source) #TODO: render emojis properly
+            self.add_message(msg, dir, color, text_color, rounding, wrap, image_size, image_source)
 
     def send_out(self, text):
         """
         Triggered on enter or clicking the kivy logo - actually sends out message through facebook and calls send_message for the GUI.
         """
         if text != "":
+            if messenger.config["instant"]:
+                self.render_message(client.uid, text, self.get_name(client.uid))
             client.send_message(text, self.active_chat_uid, self.active_chat_type, self.gpg_keys if self.root.ids.encrypt.active else None)
 
     def receive(self):
         while True:
             time.sleep(messenger.config["delay"])
-            if client.received:
+            if client.received and not (messenger.config["instant"] and client.author_uid == client.uid):
                 client.received = False
                 self.render_message(client.author_uid, client.message, self.get_name(client.author_uid))
 

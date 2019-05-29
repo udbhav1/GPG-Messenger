@@ -20,7 +20,7 @@ def get_path(chat_backend: str) -> str:
     return SETTINGS if chat_backend == "global" else f"accounts/{chat_backend}/{SETTINGS}"
 
 defaults = {get_path("global"): {"gpg": {"gpgbinary": "gpg", "gnupghome": f"{os.environ['HOME']}/.gnupg/"}, "backend": "facebook", "dev": False, "images": 10},
-            get_path("facebook"): {"username": "", "pass": "", "2FA": False, "history": 25, "delay": 0.1},
+            get_path("facebook"): {"username": "", "pass": "", "2FA": False, "history": 25, "delay": 0.1, "instant": False},
             "cookie.gpg": {},
             "keys.pickle": {}
            }
@@ -73,7 +73,8 @@ def setup_settings(chat_backend: str) -> None:
                             "pass": "What is your password / path to file with your password",
                             "2FA": "Is two factor authentication active",
                             "history": "How many messages to get",
-                            "delay": "Time between refresh"
+                            "delay": "Time between refresh",
+                            "instant": "Whether to instantly update the GUI (smoother but doesn't correspond with real-time message sending)"
                             }
               }
 
@@ -228,7 +229,7 @@ if __name__ == "__main__":
     parser_edit.add_argument("setting", help="specifies which level of settings to edit. Either global or facebook.")
     parser_edit.set_defaults(func=lambda args: setup_settings(args.setting))
 
-    args = parser.parse_args()
+    args = parser.parse_args() #TODO: edit specific parameter without overwriting existing settings file
     args.func(args)
 
     if not dev:
