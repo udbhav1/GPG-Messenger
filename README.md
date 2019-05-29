@@ -5,6 +5,12 @@ Implemented using [**Python 3.7**](https://www.python.org/).
 
 Libraries used: Check the Pipfile!
 
+## In Action
+From the app:
+![Screenshot from the app](encrypted-app.png) 
+
+From Facebook Messenger:
+![Screenshot from Facebook Messenger](messenger.png)
 ## Setup
 
 1. Run `pipenv install` in the directory which you downloaded this respository (henceforth known as the "root" path).
