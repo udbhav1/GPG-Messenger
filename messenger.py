@@ -188,7 +188,7 @@ class GPGClient(fbchat.Client):
 
     """ Subclass of fbchat.Client. """
 
-    def init(self): self.received, self.message, self.thread, self.author_uid = False, None, 0, 0
+    def init(self): self.received, self.message, self.thread, self.author_uid, self.new_message, self.new_message_thread = False, None, 0, 0, False, 0
 
     def send_message(self, msg: str, uid: int, chat_type: str, fingerprints: list) -> str:
         """ Sends an message over the chat backend, attempts to encrypt so that both
@@ -216,6 +216,8 @@ class GPGClient(fbchat.Client):
             self.markAsRead(thread_id)
 
             self.received, self.message, self.thread, self.author_uid = True, message_object, thread_id, author_id
+        else:
+            self.new_message, self.new_message_thread = True, thread_id
 
 global_config = load_file(SETTINGS, lambda x: json.load(x))
 dev = global_config["dev"]

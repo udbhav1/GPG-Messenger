@@ -27,6 +27,23 @@ client = messenger.client
 KV = '''
 #:import RGBA kivy.utils.rgba
 #:import Clock kivy.clock.Clock
+#:import F kivy.factory.Factory
+
+<ImagePopup@Popup>:
+    title: ''
+    BoxLayout:
+        orientation: 'vertical'
+        Image:
+            source: root.title
+            keep_ratio: True
+            size_hint_y: 0.9
+        Button:
+            text: 'Close'
+            on_release: root.dismiss()
+            size_hint_y: 0.1
+
+<MessageImageClickable@ButtonBehavior+Image>:
+
 <ImageButton@ButtonBehavior+Image>:
     size_hint: None, None
     size: self.texture_size
@@ -115,7 +132,7 @@ BoxLayout:
                 padding_y: 2
                 text: 'go to last message' if rv.height < box.height and rv.scroll_y > 0 else ''
                 pos_hint: {'pos': (0, 0)}
-                on_release: app.scroll_bottom()
+                on_release: app.scroll_bottom(0.3)
         BoxLayout:
             size_hint: 1, None
             size: self.minimum_size
@@ -173,7 +190,7 @@ BoxLayout:
                 size: self.size
                 pos: self.pos
                 radius: root.rounding
-    Image:
+    MessageImageClickable:
         id: image
         source: root.image_source
         pos_hint:
@@ -185,8 +202,10 @@ BoxLayout:
         size_hint: None, None
         allow_stretch: False
         keep_ratio: True
-        y: root.y - root.image_size[1]/2 # remove the /2 if the image is covering up the message
+        y: root.y
         size: root.image_size
+        on_release:
+            F.ImagePopup(title=root.image_source).open()
 
 <Recipient@FloatLayout>:
     r_id: -1
@@ -239,16 +258,19 @@ class GPG_Messenger(App):
     encrypt = ObjectProperty(True)
 
     def __init__(self):
-        """
-        Obtains the last 20 threads and adds them to the left hand bar.
-        """
+
         super().__init__()
         self.initialize()
         print("Loading Client...")
+        self.updateThreadList()
+
+        messenger.make_thread(self.receive)
+
+    def updateThreadList(self):
+        self.recipient_list = []
         for thread in client.fetchThreadList():
             safe = self.encryption_possible(thread)
             self.add_recipient(thread.name, thread.uid, thread.type, safe)
-        messenger.make_thread(self.receive)
 
     def encryption_possible(self, thread):
         """
@@ -259,6 +281,9 @@ class GPG_Messenger(App):
         return int(messenger.get_key((self.uid_to_obj(thread) if isinstance(thread, str) else thread).name) is not None)
 
     def initialize(self):
+        """
+        Initialize/reset variables
+        """
         self.messages = []
         #uid_to_name [dict] ([str] -> [str]): fbchat uid mapped to name
         #current_members [list] of [str]: member uids in active chat
@@ -275,7 +300,7 @@ class GPG_Messenger(App):
 
     def switch_recipient(self, chat_uid, chat_type, *args):
         """
-        Called on press of button in kv - sets variables, clears messages, rebuilds UID to name map, and loads last 50 messages.
+        Called on press of button in kv - sets variables, clears messages, rebuilds UID to name map, and loads last n messages
         """
         self.initialize() #reset
 
@@ -292,6 +317,9 @@ class GPG_Messenger(App):
         self.load_last(chat_uid, chat_type)
 
     def update_keys(self):
+        """
+        Attempts to get GPG keys for members of the current thread
+        """
         for user_id in self.current_members:
             key = messenger.get_key(self.get_name(user_id))
             if key is not None:
@@ -303,7 +331,7 @@ class GPG_Messenger(App):
 
     def update_uid_to_name(self):
         """
-        Helper func to rebuild map of UIDs to names.
+        Helper func to rebuild map of UIDs to names
         """
         for i in self.current_members:
             if i != client.uid:
@@ -311,7 +339,7 @@ class GPG_Messenger(App):
 
     def uid_to_obj(self, uid, type="USER"):
         """
-        Gets the thread/user object from a uid.
+        Gets the thread/user object from a uid
         """
         if type == "USER":
             return client.fetchUserInfo(uid)[uid]
@@ -325,7 +353,7 @@ class GPG_Messenger(App):
 
     def load_last(self, chat_uid, chat_type, n=messenger.config["history"], *args):
         """
-        Loads last n (default 50) messages.
+        Loads last n (default 25) messages
         """
         try:
             prev = client.fetchThreadMessages(thread_id=chat_uid, limit=n)[::-1]
@@ -336,12 +364,11 @@ class GPG_Messenger(App):
         for i in prev:
             first_name = self.get_name(i.author).split(" ")[0]
             self.render_message(i.author, i, first_name)
-
-        self.scroll_bottom()
+            self.scroll_bottom(0)
 
     def add_message(self, text, side, bg_color, text_color, rounding, t_size, image_size, image_source):
         """
-        Adds a message to the GUI.
+        Adds a message to the GUI
         """
         self.messages.append({
             'message_id': len(self.messages),
@@ -357,7 +384,7 @@ class GPG_Messenger(App):
 
     def add_recipient(self, name, uid, type, safe):
         """
-        Adds a clickable recipient to the GUI.
+        Adds a clickable recipient to the GUI
         """
         self.recipient_list.append({
             'r_id': len(self.recipient_list),
@@ -370,11 +397,13 @@ class GPG_Messenger(App):
 
     def render_message(self, author, message, name=None):
         """
-        Wraps text and calls add_message.
+        Wraps text, formats message, and calls add_message
         """
 
         message_object = not isinstance(message, str)
         text, msg = (message.text, None) if message_object else (message, None)
+        if text is None:
+            return
         encrypted = messenger.is_encrypted(text) if message_object else self.root.ids.encrypt.active
 
         dir, color, text_color, rounding = ("right", "#0078FF", (1,1,1,1), (25,5,5,25)) if author == client.uid else ("left", "#F1F0F0", (0,0,0,1), (5,25,25,5))
@@ -400,7 +429,7 @@ class GPG_Messenger(App):
 
     def send_out(self, text):
         """
-        Triggered on enter or clicking the kivy logo - actually sends out message through facebook and calls send_message for the GUI.
+        Triggered on enter or clicking the kivy logo - actually sends out message through facebook and calls send_message for the GUI
         """
         if text != "":
             if messenger.config["instant"]:
@@ -408,27 +437,36 @@ class GPG_Messenger(App):
             client.send_message(text, self.active_chat_uid, self.active_chat_type, self.gpg_keys if self.root.ids.encrypt.active else None)
 
     def receive(self):
+        """
+        Threaded function to listen for new messages
+        """
         while True:
             time.sleep(messenger.config["delay"])
             if client.received and not (messenger.config["instant"] and client.author_uid == client.uid):
                 client.received = False
                 self.render_message(client.author_uid, client.message, self.get_name(client.author_uid))
 
-    def scroll_bottom(self):
+    def scroll_bottom(self, time):
         """
-        Animates a scroll to the bottom of the messages in d=*seconds* time.
+        Animates a scroll to the bottom of the messages in d=*seconds* time
         """
         Animation.cancel_all(self.root.ids.rv, 'scroll_y')
-        Animation(scroll_y=0, t='out_quad', d=.3).start(self.root.ids.rv)
+        Animation(scroll_y=0, t='out_quad', d=time).start(self.root.ids.rv)
 
     def schedule_refocus(self, obj):
         """
-        Used for text entry box - needs to schedule or it won't work.
+        Used for text entry box - needs to schedule or it won't work
         """
         Clock.schedule_once(functools.partial(self.refocus, obj), 0.05)
 
     def refocus(self, obj, *args):
+        """
+        Refocuses text entry box
+        """
         obj.focus = True
+
+#class ImagePopup(Popup):
+#    def __init__(self, source, **kwargs):
 
 class HoverBehavior(object):
     """Hover behavior.
