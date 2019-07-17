@@ -4,6 +4,8 @@ import fbchat
 from fbchat.models import *
 import requests
 import gnupg
+from PIL import Image
+import glob
 
 #By Stephen Huan, Udbhav Muthakana
 #API for application as well as command line interface (CLI)
@@ -184,6 +186,61 @@ def make_thread(f) -> None:
     thread.daemon = True
     thread.start()
 
+def get_sticker(token: str):
+    """ Searches to see if a piece of text represents a valid sticker. """
+    for pack in os.listdir("stickers/"):
+        path = f"stickers/{pack}"
+        if os.path.isdir(path):
+            for sticker in os.listdir(path):
+                if sticker.split('.')[1] == "png" and f"{pack}:{sticker.split('.')[0]}" in token:
+                    size = token.split(":")[-1] if len(token.split(":")) == 3 else "medium"
+                    return (f"{path}/{sticker}", size)
+
+def parse_sticker(text: str) -> tuple:
+    """ Determines whether or not to render a sticker. """
+    rtn, new = [], []
+
+    for token in text.split():
+        sticker = get_sticker(token)
+        if sticker is not None:
+            rtn.append(sticker)
+        else:
+            new.append(token)
+
+    return rtn, " ".join(new)
+
+def gen_sticker(path: str, size: str) -> None:
+    """ Makes a temp file with the right size and serves that temp file. """
+    sizes = {"small": 100, "medium": 150, "large": 200}
+    size = sizes[size] if size in sizes else int(size)
+
+    im = Image.open(path)
+    im.thumbnail((size, size))
+
+    i = 0
+    while os.path.exists(f"stickers/cache/temp{i}.png"):
+        i += 1
+
+    im.save(f"stickers/cache/temp{i}.png", "PNG")
+
+def show_stickers(pack: str):
+    stickers = glob.glob(f"stickers/{pack}/*.png")
+    print(f"Number of stickers in {pack}: {len(stickers)}")
+    for sticker in stickers:
+        im = Image.open(sticker)
+        w, h = im.size
+        if w != h:
+            print("Nonsquare sticker:", sticker)
+
+def get_cache() -> list:
+    """ Returns all the file paths from the cache. """
+    return glob.glob("stickers/cache/*.png")
+
+def clear_cache() -> None:
+    """ Removes all files from the cache """
+    for sticker in get_cache():
+        os.remove(sticker)
+
 class GPGClient(fbchat.Client):
 
     """ Subclass of fbchat.Client. """
@@ -201,9 +258,21 @@ class GPGClient(fbchat.Client):
 
         returns formatted str of original msg
         """
-        encrypted = str(gpg.encrypt(msg, [*fingerprints, keyid])) if fingerprints is not None else msg
+        stickers, text = parse_sticker(msg)
         type = USER if chat_type == "USER" else GROUP
-        self.send(Message(text=encrypted), thread_id=uid, thread_type=type)
+
+        msg = msg if len(stickers) == 0 else text
+        encrypted = str(gpg.encrypt(msg, [*fingerprints, keyid])) if fingerprints is not None else msg
+
+        if len(stickers) == 0:
+            self.send(Message(text=encrypted), thread_id=uid, thread_type=type)
+        else:
+            for sticker in stickers:
+                gen_sticker(*sticker)
+
+            self.sendLocalFiles(get_cache(), message=Message(text=encrypted), thread_id=uid, thread_type=type)
+            clear_cache()
+
         return format_message(time.time(), msg)
 
     def onMessage(self, author_id: str, message_object: Message, thread_id: str, thread_type, **kwargs):
